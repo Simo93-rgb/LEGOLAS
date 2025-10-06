@@ -1,0 +1,324 @@
+# GALADRIEL ML Models Configuration
+# Configurazioni per modelli BERT e parametri di training
+
+# =============================================================================
+# MODELLI BIOMEDICI SUPPORTATI  
+# =============================================================================
+
+models:
+  # BERT standard
+  bert-base-uncased:
+    name: "bert-base-uncased"
+    type: "bert"
+    max_length: 512
+    num_labels: 2
+    description: "BERT base model, buon punto di partenza"
+    recommended_batch_size: 16
+    recommended_lr: 2e-5
+    
+  bert-large-uncased:
+    name: "bert-large-uncased" 
+    type: "bert"
+    max_length: 512
+    num_labels: 2
+    description: "BERT large, maggiore capacità ma più lento"
+    recommended_batch_size: 8
+    recommended_lr: 1e-5
+
+  # BERT specializzati biomedici
+  biobert-base:
+    name: "dmis-lab/biobert-base-cased-v1.1"
+    type: "bert"
+    max_length: 512
+    num_labels: 2
+    description: "BioBERT, pre-addestrato su testi biomedici"
+    recommended_batch_size: 12
+    recommended_lr: 2e-5
+    
+  clinical-bert:
+    name: "emilyalsentzer/Bio_ClinicalBERT"
+    type: "bert"
+    max_length: 512
+    num_labels: 2
+    description: "ClinicalBERT, specializzato in note cliniche"
+    recommended_batch_size: 12
+    recommended_lr: 2e-5
+    
+  pubmedbert-base:
+    name: "microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext"
+    type: "bert"
+    max_length: 512
+    num_labels: 2
+    description: "PubMedBERT, addestrato su abstracts e full text"
+    recommended_batch_size: 12
+    recommended_lr: 2e-5
+
+  bluebert-base:
+    name: "bionlp/bluebert_pubmed_mimic_uncased_L-12_H-768_A-12"
+    type: "bert"
+    max_length: 512
+    num_labels: 2
+    description: "BlueBERT, specializzato in dominio clinico"
+    recommended_batch_size: 12
+    recommended_lr: 2e-5
+
+  scibert-base:
+    name: "allenai/scibert_scivocab_uncased"
+    type: "bert"
+    max_length: 512
+    num_labels: 2
+    description: "SciBERT, specializzato in letteratura scientifica"
+    recommended_batch_size: 12
+    recommended_lr: 2e-5
+
+  clinicalbert-base:
+    name: "medicalai/ClinicalBERT"
+    type: "bert"
+    max_length: 512
+    num_labels: 2
+    description: "ClinicalBERT, ottimizzato per record medici"
+    recommended_batch_size: 12
+    recommended_lr: 2e-5
+
+  # ModernBERT specializzati biomedici
+  clinical-modernbert:
+    name: "Simonlee711/Clinical_ModernBERT"
+    type: "bert"
+    max_length: 512
+    num_labels: 2
+    description: "Clinical ModernBERT, architettura moderna per dati clinici"
+    recommended_batch_size: 12
+    recommended_lr: 2e-5
+
+  bioclinical-modernbert:
+    name: "Simonlee711/Clinical_ModernBERT"
+    type: "bert"
+    max_length: 512
+    num_labels: 2
+    description: "Clinical ModernBERT, architettura avanzata per biomedicina"
+    recommended_batch_size: 12
+    recommended_lr: 2e-5
+
+  # Longformer per sequenze lunghe  
+  clinical-longformer:
+    name: "yikuan8/Clinical-Longformer"
+    type: "longformer"
+    max_length: 1024
+    num_labels: 2
+    description: "Clinical Longformer, gestisce sequenze lunghe"
+    recommended_batch_size: 6
+    recommended_lr: 1e-5
+    
+  longformer-base:
+    name: "allenai/longformer-base-4096"
+    type: "longformer"
+    max_length: 1024
+    num_labels: 2
+    description: "Longformer base, sequenze fino a 4096 token"
+    recommended_batch_size: 4
+    recommended_lr: 1e-5
+
+  # Modelli italiani (per eventuale uso futuro)
+  bert-italian:
+    name: "dbmdz/bert-base-italian-uncased"
+    type: "bert"
+    max_length: 512
+    num_labels: 2
+    description: "BERT italiano, per testi non tradotti"
+    recommended_batch_size: 12
+    recommended_lr: 2e-5
+
+# =============================================================================
+# CONFIGURAZIONI TRAINING
+# =============================================================================
+
+training:
+  # Parametri generali
+  default_epochs: 20
+  default_batch_size: 12
+  default_learning_rate: 2e-5
+  default_max_length: 512
+  
+  # Early stopping
+  early_stopping:
+    patience: 5
+    min_delta: 0.001
+    restore_best_weights: true
+    monitor: "val_loss"  # o "val_accuracy", "val_f1"
+    mode: "min"  # "min" per loss, "max" per accuracy
+    
+    # Advanced early stopping (da BERTing)
+    use_loss_ratio: true
+    loss_ratio_threshold: 1.15
+    loss_ratio_patience: 3
+  
+  # Ottimizzazione
+  optimizer:
+    type: "AdamW"
+    weight_decay: 0.01
+    eps: 1e-8
+    
+  # Learning rate scheduler
+  lr_scheduler:
+    type: "linear"  # "linear", "cosine", "constant"
+    warmup_steps: 0.1  # frazione del totale steps
+    
+  # Data augmentation (opzionale)
+  augmentation:
+    enabled: false
+    techniques: ["synonym_replacement", "random_deletion"]
+    probability: 0.1
+
+# =============================================================================  
+# CONFIGURAZIONI DATASET
+# =============================================================================
+
+dataset:
+  # Split dati
+  train_split: 0.8
+  val_split: 0.2
+  test_split: 0.0  # opzionale
+  
+  # Bilanciamento classi
+  class_balancing:
+    enabled: true
+    method: "weighted_loss"  # "weighted_loss", "oversampling", "undersampling"
+    
+  # Preprocessing
+  preprocessing:
+    lowercase: false  # Mantieni case per termini medici
+    remove_special_chars: false
+    max_tokens_per_story: 500
+    truncation_strategy: "tail"  # "head", "tail", "middle"
+
+# =============================================================================
+# TRAINING DEFAULTS (ex-config.py hardcoded values)
+# =============================================================================
+
+training_defaults:
+  # Training parameters (spostati da ClassificationConfig)
+  batch_size: 12
+  learning_rate: 2e-5
+  epochs: 20
+  validation_split: 0.2
+  
+  # Gradient Accumulation
+  gradient_accumulation_steps: 1
+  
+  # Early stopping configuration
+  early_stopping:
+    patience: 5
+    min_delta: 0.001
+    use_loss_ratio: true
+    loss_ratio_threshold: 1.15
+    loss_ratio_patience: 3
+  
+  # Class balancing
+  use_class_weights: true
+  
+  # Device and optimization
+  device: "auto"  # "cuda", "cpu", or "auto"
+  mixed_precision: false
+  
+  # Output and logging
+  save_best_only: true
+  save_model: true
+  verbose: true
+
+# =============================================================================
+# CONFIGURAZIONI XAI
+# =============================================================================
+
+explainability:
+  # Attention analysis
+  attention:
+    enabled: true
+    max_samples: 100  # Numero massimo campioni per analisi
+    save_raw_attention: false
+    analyze_all_heads: false  # Se analizzare tutte le attention heads
+    
+  # Visualizzazioni
+  visualization:
+    generate_heatmaps: true
+    generate_token_importance: true
+    generate_class_comparison: true
+    generate_interactive_plots: true
+    
+    # Formato output
+    image_format: "png"  # "png", "jpg", "svg"
+    image_dpi: 300
+    
+  # Interpretazione clinica
+  clinical_interpretation:
+    enabled: true
+    min_attention_threshold: 0.3
+    min_class_difference: 0.2
+    extract_pathways: true
+    analyze_temporal_patterns: true
+
+# =============================================================================
+# PATHS E OUTPUT
+# =============================================================================
+
+paths:
+  # Directory base
+  models_dir: "results/models"
+  reports_dir: "results/reports"  
+  visualizations_dir: "results/visualizations"
+  logs_dir: "results/logs"
+  
+  # File templates
+  model_filename: "{model_name}_{timestamp}.pth"
+  report_filename: "classification_report_{timestamp}.json"
+  attention_filename: "attention_analysis_{timestamp}.json"
+
+# =============================================================================
+# LOGGING E MONITORING
+# =============================================================================
+
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  save_to_file: true
+  log_filename: "galadriel_ml_{timestamp}.log"
+  
+  # Metrics tracking
+  track_training_metrics: true
+  save_plots: true
+  tensorboard_enabled: false
+
+# =============================================================================
+# HARDWARE E PERFORMANCE
+# =============================================================================
+
+hardware:
+  # Device selection
+  device: "auto"  # "auto", "cuda", "cpu"
+  
+  # Memory optimization
+  gradient_accumulation_steps: 1
+  fp16: false  # Mixed precision training
+  dataloader_num_workers: 4
+  pin_memory: true
+  
+  # Parallelization
+  use_parallel: false
+  gpu_ids: [0, 1]  # Se multiple GPU
+
+# =============================================================================
+# HYPERPARAMETER TUNING (per uso futuro)
+# =============================================================================
+
+hyperparameter_tuning:
+  enabled: false
+  method: "grid_search"  # "grid_search", "random_search", "bayesian"
+  
+  # Parametri da ottimizzare
+  search_space:
+    learning_rate: [1e-5, 2e-5, 3e-5, 5e-5]
+    batch_size: [8, 12, 16]
+    num_epochs: [15, 20, 25]
+    
+  # Metrica per ottimizzazione
+  optimization_metric: "val_f1"
+  cv_folds: 3

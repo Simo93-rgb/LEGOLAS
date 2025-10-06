@@ -1,0 +1,15 @@
+/backup_*/
+output/models/*
+output/stories/*
+!output/models/.gitkeep
+!output/stories/.gitkeep
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+.ipynb_checkpoints
+/data/*
+*.pth
+.vscode/
+logs/
+prediction/

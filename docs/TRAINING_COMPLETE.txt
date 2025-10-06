@@ -1,0 +1,284 @@
+════════════════════════════════════════════════════════════════════════
+  ✅ TRAINING & EVALUATION - IMPLEMENTAZIONE COMPLETATA
+════════════════════════════════════════════════════════════════════════
+
+📝 FILE MODIFICATI
+────────────────────────────────────────────────────────────────────────
+
+  ✏️  train_llm.py
+      ├─ Aggiunto STORY_FORMAT configurabile
+      ├─ Caricamento da output/{formato}_*.pkl
+      ├─ Salvataggio come xes_{formato}_{modello}.pth
+      └─ Output migliorato con emoji e formattazione
+
+  ✏️  eval_model.py
+      ├─ Aggiunto STORY_FORMAT configurabile
+      ├─ Caricamento da output/{formato}_*.pkl
+      ├─ Caricamento modello xes_{formato}_{modello}.pth
+      ├─ Risultati salvati come xes_{formato}_{modello}_*
+      └─ Report formattato e informativo
+
+  🆕 launch_run_train_eval (NUOVO)
+      ├─ Menu interattivo per formato storie
+      ├─ Menu interattivo per modello
+      ├─ Configurazione automatica train_llm.py e eval_model.py
+      ├─ Esecuzione training e/o evaluation
+      └─ Output colorato e user-friendly
+
+  📖 TRAINING_EVALUATION_GUIDE.md (NUOVO)
+      └─ Guida completa per training e evaluation
+
+
+✅ CONFIGURAZIONE ATTUALE
+────────────────────────────────────────────────────────────────────────
+
+  train_llm.py:
+    • STORY_FORMAT = 'narrativo'
+    • model_name = 'bertm'
+    • LEARNING_RATE = 1e-5
+    • BATCH = 256
+
+  eval_model.py:
+    • STORY_FORMAT = 'narrativo'
+    • model_name = 'bertm'
+
+
+📊 FILE DISPONIBILI
+────────────────────────────────────────────────────────────────────────
+
+  Storie Generate (da ./run_xes_pipeline.sh):
+    ✅ output/narrativo_train.pkl       (3.8 MB)
+    ✅ output/narrativo_test.pkl        (2.0 MB)
+    ✅ output/narrativo_label_train.pkl (9.6 KB)
+    ✅ output/narrativo_label_test.pkl  (5.0 KB)
+    
+    ✅ output/bullet_train.pkl          (3.4 MB)
+    ✅ output/bullet_test.pkl           (1.8 MB)
+    ✅ output/bullet_label_train.pkl    (9.6 KB)
+    ✅ output/bullet_label_test.pkl     (5.0 KB)
+    
+    ✅ output/clinical_train.pkl        (3.8 MB)
+    ✅ output/clinical_test.pkl         (2.0 MB)
+    ✅ output/clinical_label_train.pkl  (9.6 KB)
+    ✅ output/clinical_label_test.pkl   (5.0 KB)
+
+
+🚀 COME USARE
+────────────────────────────────────────────────────────────────────────
+
+  ╔══════════════════════════════════════════════════════════════╗
+  ║  METODO 1: Script Interattivo (RACCOMANDATO)                ║
+  ╚══════════════════════════════════════════════════════════════╝
+  
+  ./launch_run_train_eval
+  
+  ↓ Menu guida attraverso:
+    1. Scelta formato (narrativo/bullet/clinical)
+    2. Scelta modello (bertm/roberta/cbert/gpt2)
+    3. Scelta azione (training/eval/entrambi)
+  
+  
+  ╔══════════════════════════════════════════════════════════════╗
+  ║  METODO 2: Esecuzione Manuale                               ║
+  ╚══════════════════════════════════════════════════════════════╝
+  
+  # Passo 1: Verifica/modifica configurazione
+  nano train_llm.py    # Imposta STORY_FORMAT e model_name
+  nano eval_model.py   # Imposta STESSO STORY_FORMAT e model_name
+  
+  # Passo 2: Training
+  python train_llm.py
+  
+  # Passo 3: Evaluation
+  python eval_model.py
+
+
+📈 OUTPUT ATTESO
+────────────────────────────────────────────────────────────────────────
+
+  Durante Training (train_llm.py):
+    ════════════════════════════════════════════════════════
+      LEGOLAS - Training su Storie XES Generate
+      Formato: narrativo
+    ════════════════════════════════════════════════════════
+    
+    📖 Caricamento storie formato 'narrativo'...
+       ✅ Training stories: XXXX campioni
+       ✅ Test stories: YYYY campioni
+    
+    📊 Dataset split:
+       - Training: AAAA
+       - Validation: BBBB
+       - Test: CCCC
+    
+    🤖 Caricamento modello: bertm
+       Device: cuda
+    
+    🚀 Inizio training...
+       - Learning rate: 1e-5
+       - Batch size: 256
+       - Epochs: 5
+    
+    [Training progress...]
+    
+    💾 Modello verrà salvato come: xes_narrativo_bertm
+    
+  
+  Durante Evaluation (eval_model.py):
+    ════════════════════════════════════════════════════════
+      LEGOLAS - Evaluation Modello XES
+      Formato: narrativo
+      Modello: bertm
+    ════════════════════════════════════════════════════════
+    
+    📖 Caricamento storie formato 'narrativo'...
+       ✅ Test stories: YYYY campioni
+    
+    📥 Caricamento modello: xes_narrativo_bertm.pth
+       ✅ Modello caricato con successo
+    
+    💾 Salvataggio risultati...
+    
+    ════════════════════════════════════════════════════════
+      CLASSIFICATION REPORT
+    ════════════════════════════════════════════════════════
+    
+                  precision    recall  f1-score   support
+    
+               0     0.XXXX    0.XXXX    0.XXXX      YYYY
+               1     0.XXXX    0.XXXX    0.XXXX      ZZZZ
+    
+        accuracy                         0.WWWW      TTTT
+    
+    ════════════════════════════════════════════════════════
+      CONFUSION MATRIX
+    ════════════════════════════════════════════════════════
+    
+    [[tp  fp]
+     [fn  tn]]
+    
+    ✅ Risultati salvati in: prediction/xes_narrativo_bertm_*
+
+
+📁 FILE GENERATI
+────────────────────────────────────────────────────────────────────────
+
+  Dopo Training:
+    xes_narrativo_bertm.pth              Modello addestrato
+    
+  Dopo Evaluation:
+    prediction/
+      ├─ xes_narrativo_bertm_prob.pkl           Probabilità
+      ├─ xes_narrativo_bertm_all_target.pkl     Target veri
+      ├─ xes_narrativo_bertm_all_prediction.pkl Predizioni
+      └─ xes_narrativo_bertm_report.txt         Report testuale
+
+
+⏱️  TEMPI STIMATI
+────────────────────────────────────────────────────────────────────────
+
+  Con GPU (CUDA):
+    • Training:   ~1-2 ore (5 epochs)
+    • Evaluation: ~2-5 minuti
+    • TOTALE:     ~1-2 ore
+  
+  Con CPU:
+    • Training:   ~15-30 ore (5 epochs)
+    • Evaluation: ~15-30 minuti
+    • TOTALE:     ~15-30 ore
+
+
+🎯 FORMATI DISPONIBILI
+────────────────────────────────────────────────────────────────────────
+
+  1. narrativo (RACCOMANDATO per BERT)
+     ├─ Prosa completa con paragrafi
+     ├─ Descrizioni dettagliate temporali
+     └─ Ottimale per modelli transformer
+  
+  2. bullet (Compatto)
+     ├─ Punti elenco con timestamp
+     ├─ Formato conciso
+     └─ Più veloce da processare
+  
+  3. clinical (SPERIMENTALE)
+     ├─ Con token clinici atomici
+     ├─ Per analisi XAI avanzata
+     └─ Richiede clinical_token_mapper
+
+
+🤖 MODELLI DISPONIBILI
+────────────────────────────────────────────────────────────────────────
+
+  • bertm  (BERT Medium)       Bilanciato, buone performance
+  • roberta (RoBERTa Base)      Robusto, ottimizzato
+  • cbert  (Clinical BERT)      Specializzato dominio clinico
+  • gpt2   (GPT-2)              Generativo, diverso approccio
+
+
+🔧 TROUBLESHOOTING RAPIDO
+────────────────────────────────────────────────────────────────────────
+
+  ❌ File storie non trovati
+     → Esegui: ./run_xes_pipeline.sh
+  
+  ❌ CUDA out of memory
+     → Riduci BATCH in train_llm.py (128 o 64)
+  
+  ❌ Modello non trovato
+     → Esegui train_llm.py prima di eval_model.py
+  
+  ❌ STORY_FORMAT diverso
+     → Usa STESSO formato in train_llm.py e eval_model.py
+
+
+📚 DOCUMENTAZIONE
+────────────────────────────────────────────────────────────────────────
+
+  Per dettagli completi:
+    → TRAINING_EVALUATION_GUIDE.md
+  
+  Per troubleshooting avanzato:
+    → INTEGRATION_GUIDE.md
+  
+  Per architettura sistema:
+    → FLOW_DIAGRAM.md
+  
+  Per navigazione docs:
+    → INDEX.md
+
+
+✅ CHECKLIST FINALE
+────────────────────────────────────────────────────────────────────────
+
+  Prima di Training:
+    ☑ File storie generati (./run_xes_pipeline.sh eseguito)
+    ☑ STORY_FORMAT configurato in train_llm.py
+    ☑ model_name scelto in train_llm.py
+    ☑ Spazio disco sufficiente (~2-5 GB)
+    ☑ GPU disponibile (opzionale ma raccomandato)
+  
+  Prima di Evaluation:
+    ☑ Training completato (file .pth esiste)
+    ☑ STORY_FORMAT in eval_model.py = train_llm.py
+    ☑ model_name in eval_model.py = train_llm.py
+
+
+🎉 TUTTO PRONTO!
+────────────────────────────────────────────────────────────────────────
+
+  Sistema configurato e pronto all'uso.
+  
+  ESEGUI ORA:
+  
+    ./launch_run_train_eval
+  
+  oppure
+  
+    python train_llm.py
+    python eval_model.py
+
+
+════════════════════════════════════════════════════════════════════════
+  Data: Ottobre 2025 | Status: ✅ PRODUZIONE
+════════════════════════════════════════════════════════════════════════
