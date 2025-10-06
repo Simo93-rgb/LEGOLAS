@@ -5,6 +5,7 @@ from transformers import AutoModel, AutoTokenizer
 from src.data.history_dataset import TextDataset
 from src.models.neural_network import LongFormerMultiClassificationHeads, SimpleGPT2SequenceClassifier
 from src.utils.model_config_loader import ModelConfigLoader
+from src.config.paths import get_story_file_path, get_model_path, ensure_directories
 import numpy as np
 import random
 import torch
@@ -95,7 +96,10 @@ def pre_train(model, optimizer, train_dataloader, val_dataloader, scheduler, pat
                     best_loss = avg_cumulated_loss
                     patience_counter = 0
                     unwrapped_model = accelerator.unwrap_model(model)
-                    accelerator.save(unwrapped_model.state_dict(), model_name + str(epoch + 1) + '.pth')
+                    # Usa path centralizzato per salvataggio modello
+                    from src.config.paths import MODELS_DIR
+                    model_save_path = MODELS_DIR / (model_name + str(epoch + 1) + '.pth')
+                    accelerator.save(unwrapped_model.state_dict(), str(model_save_path))
                 else:
                     patience_counter += 1
 
@@ -125,21 +129,28 @@ if __name__ == '__main__':
     
     set_seed(seed)
     
+    # Assicura che le directory esistano
+    ensure_directories()
+    
     # Carica file generati dalla pipeline XES
     print(f"📖 Caricamento storie formato '{STORY_FORMAT}'...")
     
-    with open(f'output/stories/{STORY_FORMAT}_train.pkl', 'rb') as f:
+    train_path = get_story_file_path(STORY_FORMAT, 'train')
+    with open(train_path, 'rb') as f:
         train = pickle.load(f)
     print(f"   ✅ Training stories: {len(train)} campioni")
 
-    with open(f'output/stories/{STORY_FORMAT}_test.pkl', 'rb') as f:
+    test_path = get_story_file_path(STORY_FORMAT, 'test')
+    with open(test_path, 'rb') as f:
         test = pickle.load(f)
     print(f"   ✅ Test stories: {len(test)} campioni")
 
-    with open(f'output/stories/{STORY_FORMAT}_label_train.pkl', 'rb') as f:
+    label_train_path = get_story_file_path(STORY_FORMAT, 'label_train')
+    with open(label_train_path, 'rb') as f:
         label_train = pickle.load(f)
 
-    with open(f'output/stories/{STORY_FORMAT}_label_test.pkl', 'rb') as f:
+    label_test_path = get_story_file_path(STORY_FORMAT, 'label_test')
+    with open(label_test_path, 'rb') as f:
         label_test = pickle.load(f)
 
     label2id = {}
@@ -282,11 +293,12 @@ if __name__ == '__main__':
 
     model, optimizer, train_dataloader, val_dataloader, scheduler = accelerator.prepare(model, optimizer, train_loader, val_loader, scheduler)
     
-    # Nome modello include formato delle storie
-    model_output_name = f'xes_{STORY_FORMAT}_{model_name}'
-    print(f"\n💾 Modello verrà salvato come: {model_output_name}\n")
+    # Nome modello include formato delle storie (usa solo basename senza path)
+    model_output_basename = f'xes_{STORY_FORMAT}_{model_name}'
+    print(f"\n💾 Modello verrà salvato come: {model_output_basename}\n")
     
-    pre_train(model, optimizer, train_dataloader, val_dataloader, scheduler, 1, 5, float('inf'), model_output_name)
+    # Il path completo sarà generato da get_model_path nella funzione pre_train
+    pre_train(model, optimizer, train_dataloader, val_dataloader, scheduler, 1, 5, float('inf'), model_output_basename)
 
 
 

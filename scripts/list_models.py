@@ -81,19 +81,20 @@ def get_model_info(model_id):
         model = loader.get_model(model_id)
         
         if model:
-            print(f"NAME={model.name}")
-            print(f"HF_ID={model.hf_model_id}")
-            print(f"TYPE={model.type}")
-            print(f"DESC={model.description}")
-            print(f"BATCH={model.recommended_batch_size}")
-            print(f"LR={model.recommended_lr}")
+            # Quote values per bash eval sicuro
+            print(f"NAME='{model.name}'")
+            print(f"HF_ID='{model.hf_model_id}'")
+            print(f"TYPE='{model.type}'")
+            print(f"DESC='{model.description}'")
+            print(f"BATCH='{model.recommended_batch_size}'")
+            print(f"LR='{model.recommended_lr}'")
             return 0
         else:
-            print(f"ERROR=Model '{model_id}' not found")
+            print(f"ERROR='Model {model_id} not found'")
             return 1
             
     except FileNotFoundError:
-        print("ERROR=Config file not found")
+        print("ERROR='Config file not found'")
         return 1
 
 

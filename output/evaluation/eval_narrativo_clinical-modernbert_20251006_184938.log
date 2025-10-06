@@ -1,0 +1,51 @@
+Some weights of BertModel were not initialized from the model checkpoint at Simonlee711/Clinical_ModernBERT and are newly initialized: ['pooler.dense.bias', 'pooler.dense.weight']
+You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
+
+============================================================
+  LEGOLAS - Evaluation Modello XES
+  Formato: narrativo
+  Modello: clinical-modernbert
+============================================================
+
+📋 Caricamento configurazioni modelli da YAML...
+✅ 13 modelli caricati
+
+🤖 Modello selezionato: clinical-modernbert
+   HuggingFace ID: Simonlee711/Clinical_ModernBERT
+   Tipo: bert
+⚠️  Modello non in cache, verrà scaricato da HuggingFace
+   Modello: clinical-modernbert (Simonlee711/Clinical_ModernBERT)
+📖 Caricamento storie formato 'narrativo'...
+   ✅ Test stories: 2514 campioni
+
+📥 Caricamento modello: clinical-modernbert
+   ✅ Trovati 4 modelli, uso: /home/simon/GitHub/LEGOLAS/output/models/xes_narrativo_clinical-modernbert4.pth
+   ✅ Modello caricato con successo
+
+
+💾 Salvataggio risultati...
+
+============================================================
+  CLASSIFICATION REPORT
+============================================================
+
+              precision    recall  f1-score   support
+
+           0     0.9602    0.9808    0.9704      2239
+           1     0.8106    0.6691    0.7331       275
+
+    accuracy                         0.9467      2514
+   macro avg     0.8854    0.8249    0.8517      2514
+weighted avg     0.9438    0.9467    0.9444      2514
+
+
+============================================================
+  CONFUSION MATRIX
+============================================================
+
+[[2196   43]
+ [  91  184]]
+
+✅ Risultati salvati in: /home/simon/GitHub/LEGOLAS/prediction/xes_narrativo_clinical-modernbert_*
+
+============================================================

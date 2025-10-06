@@ -1,6 +1,16 @@
 #!/bin/bash
 # Script helper per training e evaluation con storie XES
 
+# ============================================================
+# PATH CONFIGURATION
+# ============================================================
+# NOTA: I path sono gestiti centralmente in src/config/paths.py
+# Questi path devono corrispondere a quelli definiti in paths.py
+STORIES_DIR="output/stories"
+MODELS_DIR="output/models"
+EVALUATION_DIR="output/evaluation"
+PREDICTION_DIR="prediction"
+
 # Colori
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -13,13 +23,16 @@ echo -e "${BLUE}   LEGOLAS - Training & Evaluation Pipeline${NC}"
 echo -e "${BLUE}════════════════════════════════════════════════════════${NC}\n"
 
 # Verifica che i file di storie esistano
-if [ ! -d "output/stories" ] || [ ! -f "output/stories/narrativo_train.pkl" ]; then
+if [ ! -d "${STORIES_DIR}" ] || [ ! -f "${STORIES_DIR}/narrativo_train.pkl" ]; then
     echo -e "${RED}❌ Errore: File di storie non trovati!${NC}"
-    echo "   Esegui prima: ./run_xes_pipeline.sh"
+    echo "   Esegui prima: ./scripts/run_xes_pipeline.sh"
     exit 1
 fi
 
-echo -e "${GREEN}✅ File di storie trovati in output/${NC}\n"
+echo -e "${GREEN}✅ File di storie trovati in ${STORIES_DIR}/${NC}\n"
+
+# Assicura che la directory evaluation esista
+mkdir -p "${EVALUATION_DIR}"
 
 # Menu scelta formato
 echo -e "${YELLOW}Scegli il formato delle storie per il training:${NC}"
@@ -143,9 +156,26 @@ case $action in
         echo -e "${BLUE}════════════════════════════════════════════════════════${NC}"
         echo -e "${BLUE}   EVALUATION${NC}"
         echo -e "${BLUE}════════════════════════════════════════════════════════${NC}\n"
+        
+        # Genera timestamp per file unico
+        TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+        EVAL_LOG="${EVALUATION_DIR}/eval_${FORMAT}_${MODEL}_${TIMESTAMP}.log"
+        
+        echo -e "${BLUE}📝 Output salvato in: ${EVAL_LOG}${NC}\n"
+        
         # Aggiorna anche eval_model.py con il modello scelto
         sed -i "s/model_name = '.*'/model_name = '${MODEL}'/" src/training/eval_model.py
-        uv run python src/training/eval_model.py
+        
+        # Esegui e salva output su file (con tee per mostrare anche a schermo)
+        uv run python src/training/eval_model.py 2>&1 | tee "${EVAL_LOG}"
+        
+        EVAL_EXIT_CODE=${PIPESTATUS[0]}
+        
+        if [ $EVAL_EXIT_CODE -eq 0 ]; then
+            echo -e "\n${GREEN}✅ Log salvato in: ${EVAL_LOG}${NC}"
+        else
+            echo -e "\n${RED}❌ Errore durante evaluation (log: ${EVAL_LOG})${NC}"
+        fi
         ;;
     *)
         echo -e "${BLUE}════════════════════════════════════════════════════════${NC}"
@@ -159,13 +189,26 @@ case $action in
             echo -e "${BLUE}   EVALUATION${NC}"
             echo -e "${BLUE}════════════════════════════════════════════════════════${NC}\n"
             
+            # Genera timestamp per file unico
+            TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+            EVAL_LOG="${EVALUATION_DIR}/eval_${FORMAT}_${MODEL}_${TIMESTAMP}.log"
+            
+            echo -e "${BLUE}📝 Output salvato in: ${EVAL_LOG}${NC}\n"
+            
             # Aggiorna anche eval_model.py con il modello scelto
             sed -i "s/model_name = '.*'/model_name = '${MODEL}'/" src/training/eval_model.py
-            uv run python src/training/eval_model.py
             
-            if [ $? -eq 0 ]; then
+            # Esegui e salva output su file (con tee per mostrare anche a schermo)
+            uv run python src/training/eval_model.py 2>&1 | tee "${EVAL_LOG}"
+            
+            EVAL_EXIT_CODE=${PIPESTATUS[0]}
+            
+            if [ $EVAL_EXIT_CODE -eq 0 ]; then
                 echo -e "\n${GREEN}✅ Evaluation completato!${NC}"
-                echo -e "\n📊 Risultati salvati in: ${GREEN}prediction/xes_${FORMAT}_${MODEL}_*${NC}"
+                echo -e "📄 Log salvato in: ${GREEN}${EVAL_LOG}${NC}"
+                echo -e "📊 Risultati salvati in: ${GREEN}${PREDICTION_DIR}/xes_${FORMAT}_${MODEL}_*${NC}"
+            else
+                echo -e "\n${RED}❌ Errore durante evaluation (log: ${EVAL_LOG})${NC}"
             fi
         else
             echo -e "\n${RED}❌ Errore durante il training${NC}"
@@ -179,13 +222,15 @@ echo -e "${GREEN}✅ Operazione completata!${NC}"
 echo -e "${BLUE}════════════════════════════════════════════════════════${NC}\n"
 
 # Mostra file generati
-if [ -d "prediction" ]; then
+if [ -d "${PREDICTION_DIR}" ]; then
     echo "📁 File generati:"
-    ls -lh prediction/xes_${FORMAT}_${MODEL}_* 2>/dev/null || echo "   (nessun file ancora)"
+    ls -lh ${PREDICTION_DIR}/xes_${FORMAT}_${MODEL}_* 2>/dev/null || echo "   (nessun file ancora)"
     echo ""
 fi
 
 echo -e "${YELLOW}💡 Suggerimenti:${NC}"
-echo "   - Modello salvato in: output/models/xes_${FORMAT}_${MODEL}.pth"
-echo "   - Report in: prediction/xes_${FORMAT}_${MODEL}_report.txt"
+echo "   - Modello salvato in: ${MODELS_DIR}/xes_${FORMAT}_${MODEL}*.pth"
+echo "   - Report in: ${PREDICTION_DIR}/xes_${FORMAT}_${MODEL}_report.txt"
+echo "   - Log evaluation in: ${EVALUATION_DIR}/eval_${FORMAT}_${MODEL}_*.log"
 echo "   - Per provare altro formato: esegui di nuovo questo script"
+echo "   - Path definiti in: src/config/paths.py"

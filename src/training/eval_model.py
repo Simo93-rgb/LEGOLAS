@@ -1,6 +1,15 @@
 from transformers import AutoModel, AutoTokenizer
 from src.data.history_dataset import TextDataset
 from src.models.neural_network import LongFormerMultiClassificationHeads, SimpleGPT2SequenceClassifier
+from src.utils.model_config_loader import ModelConfigLoader
+from src.config.paths import (
+    get_story_file_path,
+    get_model_path,
+    get_prediction_path,
+    MODELS_DIR,
+    PREDICTION_DIR,
+    ensure_directories
+)
 from torch.utils.data import DataLoader
 import torch
 import pickle
@@ -52,7 +61,7 @@ def get_weight_dir(
 # ============================================================
 # Deve corrispondere al formato usato in train_llm.py
 STORY_FORMAT = 'narrativo'
-model_name = 'cbert'
+model_name = 'clinical-modernbert'
 
 print(f"\n{'='*60}")
 print(f"  LEGOLAS - Evaluation Modello XES")
@@ -60,20 +69,51 @@ print(f"  Formato: {STORY_FORMAT}")
 print(f"  Modello: {model_name}")
 print(f"{'='*60}\n")
 
-# Mappa nome modello a HuggingFace model ID
-model_map = {
-    'bertm': 'prajjwal1/bert-medium',
-    'roberta': 'FacebookAI/roberta-base',
-    'gpt2': 'openai-community/gpt2',
-    'cbert': 'emilyalsentzer/Bio_ClinicalBERT'
-}
+# Carica configurazioni modelli da YAML
+print(f'📋 Caricamento configurazioni modelli da YAML...')
+try:
+    config_loader = ModelConfigLoader()
+    available_models = config_loader.list_model_ids()
+    print(f'✅ {len(available_models)} modelli caricati')
+    
+except FileNotFoundError as e:
+    print(f'⚠️  Config YAML non trovato: {e}')
+    print(f'   Uso configurazioni legacy hardcoded')
+    
+    # Fallback a mappa legacy
+    model_map = {
+        'bertm': 'prajjwal1/bert-medium',
+        'roberta': 'FacebookAI/roberta-base',
+        'gpt2': 'openai-community/gpt2',
+        'cbert': 'emilyalsentzer/Bio_ClinicalBERT'
+    }
+    config_loader = None
+    available_models = list(model_map.keys())
 
-if model_name not in model_map:
-    print(f'❌ Modello non trovato: {model_name}')
-    print(f'   Modelli disponibili: {list(model_map.keys())}')
-    exit(1)
-
-model_ref = model_map[model_name]
+# Verifica che il modello richiesto esista
+if config_loader:
+    model_config = config_loader.get_model(model_name)
+    if not model_config:
+        print(f'❌ Modello non trovato: {model_name}')
+        print(f'   Modelli disponibili:')
+        for model_id in available_models:
+            m = config_loader.get_model(model_id)
+            print(f'      • {model_id}: {m.description}')
+        exit(1)
+    
+    model_ref = model_config.hf_model_id
+    
+    print(f'\n🤖 Modello selezionato: {model_name}')
+    print(f'   HuggingFace ID: {model_ref}')
+    print(f'   Tipo: {model_config.type}')
+    
+else:
+    # Usa legacy model_map
+    if model_name not in model_map:
+        print(f'❌ Modello non trovato: {model_name}')
+        print(f'   Modelli disponibili: {list(model_map.keys())}')
+        exit(1)
+    model_ref = model_map[model_name]
 
 # Prova a usare cache locale, altrimenti scarica da HuggingFace
 try:
@@ -87,17 +127,23 @@ print(f'   Modello: {model_name} ({model_ref})')
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+# Assicura che le directory esistano
+ensure_directories()
+
 # Carica storie dal formato specificato
 print(f"📖 Caricamento storie formato '{STORY_FORMAT}'...")
 
-with open(f'output/stories/{STORY_FORMAT}_test.pkl', 'rb') as f:
+test_path = get_story_file_path(STORY_FORMAT, 'test')
+with open(test_path, 'rb') as f:
     test = pickle.load(f)
 print(f"   ✅ Test stories: {len(test)} campioni")
 
-with open(f'output/stories/{STORY_FORMAT}_label_train.pkl', 'rb') as f:
+label_train_path = get_story_file_path(STORY_FORMAT, 'label_train')
+with open(label_train_path, 'rb') as f:
     label_train = pickle.load(f)
 
-with open(f'output/stories/{STORY_FORMAT}_label_test.pkl', 'rb') as f:
+label_test_path = get_story_file_path(STORY_FORMAT, 'label_test')
+with open(label_test_path, 'rb') as f:
     label_test = pickle.load(f)
 
 label2id = {}
@@ -134,12 +180,12 @@ else:
     test_model = LongFormerMultiClassificationHeads(test_model)
     
     # Carica modello addestrato - cerca ultimo modello salvato
-    base_model_name = f'output/models/xes_{STORY_FORMAT}_{model_name}'
-    print(f"\n📥 Caricamento modello: {base_model_name}")
+    print(f"\n📥 Caricamento modello: {model_name}")
     
-    # Cerca modelli con numero epoca (es: xes_narrativo_bertm1.pth, xes_narrativo_bertm2.pth, ...)
+    # Cerca modelli con numero epoca usando glob su MODELS_DIR
     import glob
-    model_files = glob.glob(f'{base_model_name}*.pth')
+    model_pattern = str(MODELS_DIR / f'xes_{STORY_FORMAT}_{model_name}*.pth')
+    model_files = glob.glob(model_pattern)
     
     if model_files:
         # Ordina per numero epoca (l'ultimo è il migliore di solito)
@@ -148,10 +194,10 @@ else:
         print(f"   ✅ Trovati {len(model_files)} modelli, uso: {model_file}")
     else:
         # Fallback: cerca senza numero epoca
-        model_file = f'{base_model_name}.pth'
+        model_file = str(get_model_path(STORY_FORMAT, model_name))
         if not os.path.exists(model_file):
             print(f"❌ ERRORE: Nessun modello trovato!")
-            print(f"   Cercato: {base_model_name}*.pth")
+            print(f"   Cercato pattern: {model_pattern}")
             print(f"   Assicurati di aver eseguito train_llm.py prima!")
             exit(1)
         print(f"   ✅ Uso modello: {model_file}")
@@ -184,21 +230,22 @@ with torch.no_grad():
 all_targets = [int(x) for x in all_targets]
 all_predictions = [int(x) for x in all_predictions]
 
-# Crea directory prediction se non esiste
-os.makedirs('prediction', exist_ok=True)
+# Assicura che prediction directory esista
+ensure_directories()
 
-# Salva risultati con nome che include formato storie
+# Prefix per nomi file risultati
 result_prefix = f'xes_{STORY_FORMAT}_{model_name}'
 
 print(f"\n💾 Salvataggio risultati...")
 
-with open(f'prediction/{result_prefix}_prob.pkl', 'wb') as file:
+# Usa get_prediction_path per path consistenti
+with open(get_prediction_path(STORY_FORMAT, model_name, 'prob'), 'wb') as file:
     pickle.dump(pred_prob, file)
 
-with open(f'prediction/{result_prefix}_all_target.pkl', 'wb') as file:
+with open(get_prediction_path(STORY_FORMAT, model_name, 'all_target'), 'wb') as file:
     pickle.dump(all_targets, file)
 
-with open(f'prediction/{result_prefix}_all_prediction.pkl', 'wb') as file:
+with open(get_prediction_path(STORY_FORMAT, model_name, 'all_prediction'), 'wb') as file:
     pickle.dump(all_predictions, file)
 
 print(f"\n{'='*60}")
@@ -208,7 +255,8 @@ print(f"{'='*60}\n")
 report = classification_report(all_targets, all_predictions, output_dict=False, digits=4)
 print(report)
 
-result = open(f'prediction/{result_prefix}_report.txt', 'w')
+report_path = get_prediction_path(STORY_FORMAT, model_name, 'report')
+result = open(report_path, 'w')
 result.write(f"Formato Storie: {STORY_FORMAT}\n")
 result.write(f"Modello: {model_name}\n")
 result.write(f"{'='*60}\n\n")
@@ -224,5 +272,5 @@ print(conf_m)
 result.write(str(conf_m))
 result.close()
 
-print(f"\n✅ Risultati salvati in: prediction/{result_prefix}_*")
+print(f"\n✅ Risultati salvati in: {PREDICTION_DIR / result_prefix}_*")
 print(f"\n{'='*60}")
