@@ -14,7 +14,7 @@ import os
 import logging
 
 from utils.types import PatientTrace, Event, PatientStory, ClassificationTarget
-from clinical_token_mapper import ClinicalTokenMapper
+from data.clinical_token_mapper import ClinicalTokenMapper
 
 logger = logging.getLogger(__name__)
 

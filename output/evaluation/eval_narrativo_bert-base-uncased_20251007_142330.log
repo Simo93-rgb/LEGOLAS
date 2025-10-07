@@ -1,0 +1,49 @@
+
+============================================================
+  LEGOLAS - Evaluation Modello XES
+  Formato: narrativo
+  Modello: bert-base-uncased
+============================================================
+
+📋 Caricamento configurazioni modelli da YAML...
+✅ 13 modelli caricati
+
+🤖 Modello selezionato: bert-base-uncased
+   HuggingFace ID: bert-base-uncased
+   Tipo: bert
+⚠️  Modello non in cache, verrà scaricato da HuggingFace
+   Modello: bert-base-uncased (bert-base-uncased)
+📖 Caricamento storie formato 'narrativo'...
+   ✅ Test stories: 2514 campioni
+
+📥 Caricamento modello: bert-base-uncased
+   ✅ Trovati 3 modelli, uso: /home/simon/GitHub/LEGOLAS/output/models/xes_narrativo_bert-base-uncased3.pth
+   ✅ Modello caricato con successo
+
+
+💾 Salvataggio risultati...
+
+============================================================
+  CLASSIFICATION REPORT
+============================================================
+
+              precision    recall  f1-score   support
+
+           0     0.9669    0.9790    0.9729      2239
+           1     0.8097    0.7273    0.7663       275
+
+    accuracy                         0.9515      2514
+   macro avg     0.8883    0.8531    0.8696      2514
+weighted avg     0.9497    0.9515    0.9503      2514
+
+
+============================================================
+  CONFUSION MATRIX
+============================================================
+
+[[2192   47]
+ [  75  200]]
+
+✅ Risultati salvati in: /home/simon/GitHub/LEGOLAS/prediction/xes_narrativo_bert-base-uncased_*
+
+============================================================

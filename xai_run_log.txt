@@ -1,0 +1,122 @@
+Command:
+python -m src.explainability.extract_explainability --model clinical-modernbert --format narrativo --top_k 30 --batch_size 8 --n_steps 50 --n_samples 50 --device cuda
+
+Press Enter to start, or Ctrl+C to cancel...
+
+================================================================================
+  LEGOLAS - Explainability Extraction (Integrated Gradients)
+================================================================================
+
+📋 Configuration:
+   Model: clinical-modernbert
+   Format: narrativo
+   Device: cuda
+   Top-K: 30
+   Batch size: 8
+   IG steps: 50
+
+🤖 Loading model: clinical-modernbert
+   HuggingFace ID: Simonlee711/Clinical_ModernBERT
+Some weights of BertModel were not initialized from the model checkpoint at Simonlee711/Clinical_ModernBERT and are newly initialized: ['pooler.dense.bias', 'pooler.dense.weight']
+You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
+   📥 Loading weights: /home/simon/GitHub/LEGOLAS/output/models/xes_narrativo_clinical-modernbert4.pth
+   ✅ Model loaded successfully
+
+📖 Loading test data (format: narrativo)...
+   ✅ Loaded 2514 test samples
+   📊 Label mapping: {0: 0, 1: 1}
+
+   📈 Class distribution:
+      Class 0: 2239 samples (89.1%)
+      Class 1: 275 samples (10.9%)
+
+   ⚠️  Analyzing only first 50 samples
+
+🔮 Generating predictions...
+   ✅ Predictions completed
+
+   📊 Predicted distribution:
+      Class 0: 43 samples
+      Class 1: 7 samples
+
+   🎯 Accuracy: 94.00% (47/50)
+
+================================================================================
+
+🔍 Analyzing 50 texts with Integrated Gradients...
+  0%|                                                                                             | 0/7 [00:00<?, ?it/s]
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/simon/GitHub/LEGOLAS/src/explainability/extract_explainability.py", line 368, in <module>
+    main()
+  File "/home/simon/GitHub/LEGOLAS/src/explainability/extract_explainability.py", line 286, in main
+    results = explainer.explain_batch(
+              ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/simon/GitHub/LEGOLAS/src/explainability/integrated_gradients.py", line 195, in explain_batch
+    tokens, attributions = self.explain_text(
+                           ^^^^^^^^^^^^^^^^^^
+  File "/home/simon/GitHub/LEGOLAS/src/explainability/integrated_gradients.py", line 97, in explain_text
+    attributions = self.ig.attribute(
+                   ^^^^^^^^^^^^^^^^^^
+  File "/home/simon/GitHub/LEGOLAS/.venv/lib/python3.11/site-packages/captum/log/dummy_log.py", line 39, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/simon/GitHub/LEGOLAS/.venv/lib/python3.11/site-packages/captum/attr/_core/integrated_gradients.py", line 277, in attribute
+    attributions = _batch_attribution(
+                   ^^^^^^^^^^^^^^^^^^^
+  File "/home/simon/GitHub/LEGOLAS/.venv/lib/python3.11/site-packages/captum/attr/_utils/batching.py", line 86, in _batch_attribution
+    current_attr = attr_method._attribute(
+                   ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/simon/GitHub/LEGOLAS/.venv/lib/python3.11/site-packages/captum/attr/_core/integrated_gradients.py", line 368, in _attribute
+    grads = self.gradient_func(
+            ^^^^^^^^^^^^^^^^^^^
+  File "/home/simon/GitHub/LEGOLAS/.venv/lib/python3.11/site-packages/captum/_utils/gradient.py", line 128, in compute_gradients
+    outputs = _run_forward(forward_fn, inputs, target_ind, additional_forward_args)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/simon/GitHub/LEGOLAS/.venv/lib/python3.11/site-packages/captum/_utils/common.py", line 588, in _run_forward
+    output = forward_func(
+             ^^^^^^^^^^^^^
+  File "/home/simon/GitHub/LEGOLAS/src/explainability/integrated_gradients.py", line 50, in forward_func
+    outputs = self.model(
+              ^^^^^^^^^^^
+  File "/home/simon/GitHub/LEGOLAS/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1773, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/simon/GitHub/LEGOLAS/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1784, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/simon/GitHub/LEGOLAS/src/models/neural_network.py", line 12, in forward
+    outputs = self.longformer(input_ids=input_ids, attention_mask=attention_mask)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/simon/GitHub/LEGOLAS/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1773, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/simon/GitHub/LEGOLAS/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1784, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/simon/GitHub/LEGOLAS/.venv/lib/python3.11/site-packages/transformers/models/bert/modeling_bert.py", line 936, in forward
+    embedding_output = self.embeddings(
+                       ^^^^^^^^^^^^^^^^
+  File "/home/simon/GitHub/LEGOLAS/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1773, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/simon/GitHub/LEGOLAS/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1784, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/simon/GitHub/LEGOLAS/.venv/lib/python3.11/site-packages/transformers/models/bert/modeling_bert.py", line 179, in forward
+    inputs_embeds = self.word_embeddings(input_ids)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/simon/GitHub/LEGOLAS/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1773, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/simon/GitHub/LEGOLAS/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1784, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/simon/GitHub/LEGOLAS/.venv/lib/python3.11/site-packages/torch/nn/modules/sparse.py", line 192, in forward
+    return F.embedding(
+           ^^^^^^^^^^^^
+  File "/home/simon/GitHub/LEGOLAS/.venv/lib/python3.11/site-packages/torch/nn/functional.py", line 2546, in embedding
+    return torch.embedding(weight, input, padding_idx, scale_grad_by_freq, sparse)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: Expected tensor for argument #1 'indices' to have one of the following scalar types: Long, Int; but got torch.cuda.FloatTensor instead (while checking arguments for embedding)

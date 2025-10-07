@@ -176,7 +176,7 @@ if __name__ == '__main__':
                                                       stratify=label_train_int)
 
 
-    model_name = 'clinical-modernbert'
+    model_name = 'bert-base-uncased'
 
     # Carica configurazioni modelli da YAML
     print(f'\n📋 Caricamento configurazioni modelli da YAML...')
