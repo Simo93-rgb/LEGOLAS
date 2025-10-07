@@ -20,7 +20,9 @@ from src.explainability import (
     IntegratedGradientsExplainer,
     ClinicalActionAggregator,
     plot_attention_heatmap,
-    plot_class_comparison
+    plot_class_comparison,
+    plot_clinical_actions_heatmap,
+    plot_clinical_actions_comparison
 )
 from src.config.paths import (
     get_story_file_path,
@@ -309,42 +311,21 @@ def main():
     for i, (word, score) in enumerate(list(top_words['class_1'].items())[:10], 1):
         print(f"      {i:2d}. {word:20s} → {score:.4f}")
     
-    # 6. Visualizations
-    print(f"\n🎨 Creating visualizations...")
-    
-    # Heatmap
-    heatmap_path = explainability_dir / f"heatmap_{args.format}_{args.model}_{timestamp}.png"
-    plot_attention_heatmap(
-        top_words['class_0'],
-        top_words['class_1'],
-        top_k=args.top_k,
-        save_path=heatmap_path
-    )
-    
-    # Histogram
-    histogram_path = explainability_dir / f"histogram_{args.format}_{args.model}_{timestamp}.png"
-    plot_class_comparison(
-        top_words['class_0'],
-        top_words['class_1'],
-        top_k=args.top_k,
-        save_path=histogram_path
-    )
-    
-    # 7. Clinical Actions (opzionale, richiede più tempo)
+    # 6. Clinical Actions Aggregation
     print(f"\n🏥 Aggregating clinical actions...")
     aggregator = ClinicalActionAggregator()
     action_results = aggregator.aggregate_across_dataset(results, by_class=True)
     
     top_actions = aggregator.get_top_actions(
         action_results,
-        top_k=15,
+        top_k=args.top_k,  # Usa stesso top_k delle parole
         sort_by='mean_score'
     )
     
     if top_actions.get('class_0'):
-        print(f"\n   Top clinical actions for Class 0:")
+        print(f"\n   Top {args.top_k} clinical actions for Class 0:")
         for i, (action, stats) in enumerate(list(top_actions['class_0'].items())[:5], 1):
-            print(f"      {i}. {action}")
+            print(f"      {i}. {action[:60]}...")
             print(f"         Mean: {stats['mean_score']:.4f}, Count: {stats['count']}")
     
     # Salva action results
@@ -353,14 +334,57 @@ def main():
         pickle.dump(action_results, f)
     print(f"\n💾 Action results salvati: {actions_file}")
     
+    # 7. Visualizations
+    print(f"\n🎨 Creating visualizations...")
+    
+    # WORD-LEVEL visualizations (originali, per riferimento)
+    print(f"   📝 Word-level visualizations...")
+    heatmap_words_path = explainability_dir / f"heatmap_words_{args.format}_{args.model}_{timestamp}.png"
+    plot_attention_heatmap(
+        top_words['class_0'],
+        top_words['class_1'],
+        top_k=args.top_k,
+        save_path=heatmap_words_path
+    )
+    
+    histogram_words_path = explainability_dir / f"histogram_words_{args.format}_{args.model}_{timestamp}.png"
+    plot_class_comparison(
+        top_words['class_0'],
+        top_words['class_1'],
+        top_k=args.top_k,
+        save_path=histogram_words_path
+    )
+    
+    # CLINICAL ACTIONS visualizations (principali, più interpretabili)
+    print(f"   🏥 Clinical actions visualizations...")
+    heatmap_actions_path = explainability_dir / f"heatmap_actions_{args.format}_{args.model}_{timestamp}.png"
+    plot_clinical_actions_heatmap(
+        action_results['class_0'],
+        action_results['class_1'],
+        top_k=args.top_k,
+        save_path=heatmap_actions_path
+    )
+    
+    histogram_actions_path = explainability_dir / f"histogram_actions_{args.format}_{args.model}_{timestamp}.png"
+    plot_clinical_actions_comparison(
+        action_results['class_0'],
+        action_results['class_1'],
+        top_k=args.top_k,
+        save_path=histogram_actions_path
+    )
+    
     # Summary
     print(f"\n{'='*80}")
     print(f"✅ Explainability extraction completed!")
     print(f"\n📁 Output files:")
-    print(f"   • Results: {results_file}")
-    print(f"   • Actions: {actions_file}")
-    print(f"   • Heatmap: {heatmap_path}")
-    print(f"   • Histogram: {histogram_path}")
+    print(f"   • IG Results (raw): {results_file}")
+    print(f"   • Clinical Actions (aggregated): {actions_file}")
+    print(f"\n   📊 Clinical Actions Visualizations (MAIN - interpretable):")
+    print(f"   • Heatmap (actions): {heatmap_actions_path}")
+    print(f"   • Histogram (actions): {histogram_actions_path}")
+    print(f"\n   📝 Word-level Visualizations (reference):")
+    print(f"   • Heatmap (words): {heatmap_words_path}")
+    print(f"   • Histogram (words): {histogram_words_path}")
     print(f"\n{'='*80}")
 
 

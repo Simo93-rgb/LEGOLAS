@@ -3,6 +3,7 @@ Visualization Module per Explainability
 Crea heatmap e istogrammi comparativi per l'analisi delle attribution
 """
 
+import json
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
@@ -14,6 +15,47 @@ from pathlib import Path
 sns.set_style("whitegrid")
 plt.rcParams['figure.figsize'] = (14, 8)
 plt.rcParams['font.size'] = 10
+
+
+def _load_italian_translations() -> Dict[str, str]:
+    """
+    Carica traduzioni dal file JSON e crea mapping inglese -> italiano
+    
+    Returns:
+        Dict[str, str]: Mapping da azione inglese a azione italiana
+    """
+    translation_file = Path(__file__).parent.parent.parent / "data" / "translation_cache.json"
+    
+    if not translation_file.exists():
+        print(f"⚠️  Translation file not found: {translation_file}")
+        return {}
+    
+    try:
+        with open(translation_file, 'r', encoding='utf-8') as f:
+            translations = json.load(f)
+        
+        # Inverti mapping: inglese -> italiano
+        english_to_italian = {v: k for k, v in translations.items()}
+        
+        return english_to_italian
+        
+    except Exception as e:
+        print(f"⚠️  Error loading translations: {e}")
+        return {}
+
+
+def _translate_to_italian(action_english: str, translations: Dict[str, str]) -> str:
+    """
+    Traduce azione da inglese a italiano usando il dizionario
+    
+    Args:
+        action_english: Nome azione in inglese
+        translations: Dizionario inglese -> italiano
+        
+    Returns:
+        Nome azione in italiano (o inglese se traduzione non trovata)
+    """
+    return translations.get(action_english, action_english)
 
 
 def plot_attention_heatmap(
@@ -66,15 +108,16 @@ def plot_attention_heatmap(
     sns.heatmap(
         data,
         xticklabels=words_c0,
-        yticklabels=['Class 0\n(DISCHARGED)', 'Class 1\n(ADMITTED)'],
+        yticklabels=['Class 0', 'Class 1'],
         cmap='YlOrRd',
-        annot=False,
+        annot=True,
         fmt='.3f',
         cbar_kws={'label': 'Normalized Attribution Score'},
         vmin=0,
         vmax=1,
         linewidths=0.5,
-        ax=ax
+        ax=ax,
+        annot_kws={'fontsize': 8}
     )
     
     # Rotazione labels
@@ -113,7 +156,7 @@ def plot_class_comparison(
     save_path: str = None
 ):
     """
-    Crea istogramma comparativo per Classe 0 e Classe 1
+    Crea istogramma comparativo per Classe 0 e Classe 1 (ORIZZONTALE)
     
     Normalizzazione SEPARATA per classe:
     - Max valore per classe 0 = max tra i top_k di classe 0
@@ -143,58 +186,49 @@ def plot_class_comparison(
     scores_c0_norm = [s / max_display for s in scores_c0]
     scores_c1_norm = [s / max_display for s in scores_c1]
     
-    # Setup plot
-    fig, ax = plt.subplots(figsize=(16, 8))
+    # Setup plot ORIZZONTALE
+    fig, ax = plt.subplots(figsize=(14, 10))
     
     x = np.arange(len(words_c0))
     width = 0.35
     
-    # Bars
-    bars1 = ax.bar(
+    # Barre ORIZZONTALI affiancate
+    bars1 = ax.barh(
         x - width/2,
         scores_c0_norm,
         width,
-        label='Class 0 (DISCHARGED)',
-        color='#3498db',
-        alpha=0.8,
-        edgecolor='black',
-        linewidth=0.5
+        label='Class 0',
+        color='steelblue',
+        alpha=0.8
     )
     
-    bars2 = ax.bar(
+    bars2 = ax.barh(
         x + width/2,
         scores_c1_norm,
         width,
-        label='Class 1 (ADMITTED)',
-        color='#e74c3c',
-        alpha=0.8,
-        edgecolor='black',
-        linewidth=0.5
+        label='Class 1',
+        color='coral',
+        alpha=0.8
     )
     
-    # Aggiungi valori sopra le barre
-    def autolabel(bars, scores_original):
-        """Attach a text label above each bar displaying its height"""
+    # Aggiungi valori sulle barre
+    for bars, scores_original in [(bars1, scores_c0), (bars2, scores_c1)]:
         for bar, score_orig in zip(bars, scores_original):
-            height = bar.get_height()
-            if height > 0.05:  # Mostra solo se barra visibile
+            width_val = bar.get_width()
+            if width_val > 0.05:  # Mostra solo se barra visibile
                 ax.text(
-                    bar.get_x() + bar.get_width()/2.,
-                    height,
+                    width_val + 0.01,
+                    bar.get_y() + bar.get_height()/2,
                     f'{score_orig:.3f}',
-                    ha='center',
-                    va='bottom',
-                    fontsize=7,
-                    rotation=0
+                    ha='left',
+                    va='center',
+                    fontsize=7
                 )
     
-    # Valori originali (non normalizzati) per le labels
-    autolabel(bars1, scores_c0)
-    autolabel(bars2, scores_c1)
-    
     # Configurazione assi
-    ax.set_xlabel('Words/Tokens', fontsize=12, fontweight='bold', labelpad=10)
-    ax.set_ylabel('Normalized Attribution Score', fontsize=12, fontweight='bold', labelpad=10)
+    ax.set_yticks(x)
+    ax.set_yticklabels(words_c0, fontsize=9)
+    ax.set_xlabel('Normalized Attribution Score', fontsize=12, fontweight='bold', labelpad=10)
     ax.set_title(
         f'Class Comparison: Top {top_k} Words Attribution (ordered by Class 0)\n'
         f'Normalized to max value in display = 1.0',
@@ -202,14 +236,9 @@ def plot_class_comparison(
         fontweight='bold',
         pad=20
     )
-    ax.set_xticks(x)
-    ax.set_xticklabels(words_c0, rotation=45, ha='right')
-    ax.legend(loc='upper right', fontsize=11, framealpha=0.9)
-    ax.set_ylim(0, 1.1)  # Lascia spazio per labels
-    
-    # Griglia
-    ax.yaxis.grid(True, linestyle='--', alpha=0.3)
-    ax.set_axisbelow(True)
+    ax.legend(loc='lower right', fontsize=11, framealpha=0.9)
+    ax.grid(axis='x', alpha=0.3)
+    ax.invert_yaxis()  # Top word in alto
     
     plt.tight_layout()
     
@@ -277,7 +306,7 @@ def plot_action_importance(
         y - height/2,
         scores_c0_norm,
         height,
-        label='Class 0 (DISCHARGED)',
+        label='Class 0 ',
         color='#3498db',
         alpha=0.8
     )
@@ -286,7 +315,7 @@ def plot_action_importance(
         y + height/2,
         scores_c1_norm,
         height,
-        label='Class 1 (ADMITTED)',
+        label='Class 1 ',
         color='#e74c3c',
         alpha=0.8
     )
@@ -311,6 +340,200 @@ def plot_action_importance(
         save_path.parent.mkdir(parents=True, exist_ok=True)
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
         print(f"✅ Action importance plot salvato: {save_path}")
+    
+    plt.close()
+    
+    return fig
+
+
+def plot_clinical_actions_heatmap(
+    actions_class_0: Dict[str, Dict],
+    actions_class_1: Dict[str, Dict],
+    top_k: int = 25,
+    save_path: str = None,
+    normalize_global: bool = True
+):
+    """
+    Crea heatmap per AZIONI CLINICHE invece di parole singole
+    
+    Args:
+        actions_class_0: Dict azione -> {'mean_score', 'count', ...} per classe 0
+        actions_class_1: Dict azione -> {'mean_score', 'count', ...} per classe 1
+        top_k: Numero di azioni da visualizzare
+        save_path: Path dove salvare il plot
+        normalize_global: Se True, normalizza al max globale
+    """
+    # Ordina azioni per mean_score decrescente (classe 0)
+    sorted_actions_c0 = sorted(
+        actions_class_0.items(),
+        key=lambda x: x[1]['mean_score'],
+        reverse=True
+    )[:top_k]
+    
+    # Carica traduzioni inglese -> italiano
+    translations = _load_italian_translations()
+    
+    # Estrai nomi azioni e scores
+    action_names_english = [action for action, _ in sorted_actions_c0]
+    scores_c0 = [stats['mean_score'] for _, stats in sorted_actions_c0]
+    
+    # Traduci azioni in italiano
+    action_names_italian = [_translate_to_italian(action, translations) 
+                            for action in action_names_english]
+    
+    # Per classe 1, prendi score delle stesse azioni (se presenti) o 0
+    scores_c1 = []
+    for action in action_names_english:
+        if action in actions_class_1:
+            scores_c1.append(actions_class_1[action]['mean_score'])
+        else:
+            scores_c1.append(0.0)
+    
+    # Normalizzazione globale
+    if normalize_global:
+        max_score = max(max(scores_c0), max(scores_c1)) if scores_c1 else max(scores_c0)
+        if max_score > 0:
+            scores_c0 = [s / max_score for s in scores_c0]
+            scores_c1 = [s / max_score for s in scores_c1]
+    
+    # Crea matrice 2xN (2 righe = 2 classi, N colonne = azioni)
+    data = np.array([scores_c0, scores_c1])
+    
+    # Trunca nomi azioni troppo lunghi (usa italiano)
+    action_labels = [action[:50] + '...' if len(action) > 50 else action 
+                     for action in action_names_italian]
+    
+    # Plot
+    fig, ax = plt.subplots(figsize=(16, 4))
+    
+    sns.heatmap(
+        data,
+        xticklabels=action_labels,
+        yticklabels=['Class 0 ', 'Class 1 '],
+        cmap='YlOrRd',
+        annot=True,
+        fmt='.3f',
+        cbar=True,
+        vmin=0,
+        vmax=1,
+        ax=ax,
+        cbar_kws={'label': 'Attribution Score (normalized)'},
+        annot_kws={'fontsize': 8}
+    )
+    
+    plt.title(f'Top-{top_k} Clinical Actions Attribution Heatmap\n(Ordered by Class 0 importance)', 
+              fontsize=14, fontweight='bold')
+    plt.xlabel('Clinical Actions', fontsize=12)
+    plt.ylabel('Class', fontsize=12)
+    plt.xticks(rotation=45, ha='right')
+    plt.tight_layout()
+    
+    if save_path:
+        save_path = Path(save_path)
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"✅ Clinical actions heatmap salvata: {save_path}")
+    
+    plt.close()
+    
+    return fig
+
+
+def plot_clinical_actions_comparison(
+    actions_class_0: Dict[str, Dict],
+    actions_class_1: Dict[str, Dict],
+    top_k: int = 25,
+    save_path: str = None
+):
+    """
+    Crea istogramma comparativo per AZIONI CLINICHE invece di parole singole
+    
+    Args:
+        actions_class_0: Dict azione -> {'mean_score', 'count', ...} per classe 0
+        actions_class_1: Dict azione -> {'mean_score', 'count', ...} per classe 1
+        top_k: Numero di azioni da visualizzare
+        save_path: Path dove salvare il plot
+    """
+    # Ordina azioni per mean_score decrescente (classe 0)
+    sorted_actions_c0 = sorted(
+        actions_class_0.items(),
+        key=lambda x: x[1]['mean_score'],
+        reverse=True
+    )[:top_k]
+    
+    # Carica traduzioni inglese -> italiano
+    translations = _load_italian_translations()
+    
+    # Estrai nomi azioni e scores
+    action_names_english = [action for action, _ in sorted_actions_c0]
+    scores_c0 = [stats['mean_score'] for _, stats in sorted_actions_c0]
+    
+    # Traduci azioni in italiano
+    action_names_italian = [_translate_to_italian(action, translations) 
+                            for action in action_names_english]
+    
+    # Per classe 1, prendi score delle stesse azioni
+    scores_c1 = []
+    for action in action_names_english:
+        if action in actions_class_1:
+            scores_c1.append(actions_class_1[action]['mean_score'])
+        else:
+            scores_c1.append(0.0)
+    
+    # Normalizza SEPARATAMENTE per visualizzazione comparativa
+    max_c0 = max(scores_c0) if scores_c0 else 1
+    max_c1 = max(scores_c1) if scores_c1 else 1
+    max_display = max(max_c0, max_c1)
+    
+    if max_display > 0:
+        scores_c0_norm = [s / max_display for s in scores_c0]
+        scores_c1_norm = [s / max_display for s in scores_c1]
+    else:
+        scores_c0_norm = scores_c0
+        scores_c1_norm = scores_c1
+    
+    # Trunca nomi azioni (usa italiano)
+    action_labels = [action[:50] + '...' if len(action) > 50 else action 
+                     for action in action_names_italian]
+    
+    # Plot
+    fig, ax = plt.subplots(figsize=(14, 10))
+    
+    x = np.arange(len(action_labels))
+    width = 0.35
+    
+    # Barre affiancate
+    bars1 = ax.barh(x - width/2, scores_c0_norm, width, 
+                    label='Class 0', color='steelblue', alpha=0.8)
+    bars2 = ax.barh(x + width/2, scores_c1_norm, width,
+                    label='Class 1', color='coral', alpha=0.8)
+    
+    # Labels e styling
+    ax.set_yticks(x)
+    ax.set_yticklabels(action_labels, fontsize=9)
+    ax.set_xlabel('Attribution Score (normalized to max in display)', fontsize=12)
+    ax.set_title(f'Top-{top_k} Clinical Actions Comparison\n(Ordered by Class 0 importance)', 
+                 fontsize=14, fontweight='bold')
+    ax.legend(fontsize=11, loc='lower right')
+    ax.grid(axis='x', alpha=0.3)
+    ax.invert_yaxis()  # Top action in alto
+    
+    # Aggiungi valori sulle barre (solo se > 0.05)
+    for bars in [bars1, bars2]:
+        for bar in bars:
+            width_val = bar.get_width()
+            if width_val > 0.05:
+                ax.text(width_val + 0.01, bar.get_y() + bar.get_height()/2,
+                       f'{width_val:.3f}',
+                       ha='left', va='center', fontsize=7)
+    
+    plt.tight_layout()
+    
+    if save_path:
+        save_path = Path(save_path)
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"✅ Clinical actions comparison salvato: {save_path}")
     
     plt.close()
     

@@ -15,7 +15,9 @@ from .action_aggregator import ClinicalActionAggregator
 from .visualization import (
     plot_attention_heatmap,
     plot_class_comparison,
-    plot_action_importance
+    plot_action_importance,
+    plot_clinical_actions_heatmap,
+    plot_clinical_actions_comparison
 )
 
 __all__ = [
@@ -23,7 +25,9 @@ __all__ = [
     'ClinicalActionAggregator',
     'plot_attention_heatmap',
     'plot_class_comparison',
-    'plot_action_importance'
+    'plot_action_importance',
+    'plot_clinical_actions_heatmap',
+    'plot_clinical_actions_comparison'
 ]
 
 from .integrated_gradients import IntegratedGradientsExplainer

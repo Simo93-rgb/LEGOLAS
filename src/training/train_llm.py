@@ -114,7 +114,7 @@ def pre_train(model, optimizer, train_dataloader, val_dataloader, scheduler, pat
 if __name__ == '__main__':
     seed = 42
     LEARNING_RATE = 1e-5
-    BATCH = 32  # Ridotto da 256 per evitare OOM su GPU
+    BATCH = 16  # Ridotto da 256 per evitare OOM su GPU
     
     # ============================================================
     # CONFIGURAZIONE: Scegli il formato delle storie generate
@@ -176,7 +176,7 @@ if __name__ == '__main__':
                                                       stratify=label_train_int)
 
 
-    model_name = 'bert-base-uncased'
+    model_name = 'bert-large-uncased'
 
     # Carica configurazioni modelli da YAML
     print(f'\n📋 Caricamento configurazioni modelli da YAML...')

@@ -61,7 +61,7 @@ def get_weight_dir(
 # ============================================================
 # Deve corrispondere al formato usato in train_llm.py
 STORY_FORMAT = 'narrativo'
-model_name = 'bert-base-uncased'
+model_name = 'bert-large-uncased'
 
 print(f"\n{'='*60}")
 print(f"  LEGOLAS - Evaluation Modello XES")
