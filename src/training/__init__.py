@@ -17,6 +17,24 @@ from .focal_loss import (
     create_loss_from_config
 )
 
+# Checkpointing
+from .checkpoint import (
+    ModelCheckpoint,
+    create_checkpoint_from_config
+)
+
+# Early Stopping
+from .early_stopping import (
+    EarlyStopping,
+    create_early_stopping_from_config
+)
+
+# K-Fold Training
+from .kfold_trainer import (
+    KFoldTrainer,
+    save_kfold_summary
+)
+
 # Utilities
 from .utils import (
     # Dataset splitting
@@ -48,6 +66,18 @@ __all__ = [
     "FocalLoss",
     "create_focal_loss",
     "create_loss_from_config",
+    
+    # Checkpointing
+    "ModelCheckpoint",
+    "create_checkpoint_from_config",
+    
+    # Early Stopping
+    "EarlyStopping",
+    "create_early_stopping_from_config",
+    
+    # K-Fold Training
+    "KFoldTrainer",
+    "save_kfold_summary",
     
     # Utilities - Splitting
     "stratified_train_val_test_split",
