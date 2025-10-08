@@ -201,11 +201,14 @@ Sistema completo testato e documentato
 
 ## 🎯 Ordine di Esecuzione
 1. ✅ **FASE 1** (Setup) → Base per tutto [COMPLETATA]
-2. ⚠️ **FASE 2** (Best Model) → Riduce spazio disco subito [PROSSIMA]
-3. ⏸️ **FASE 3** (Early Stop) → Migliora qualità training
-4. ⏸️ **FASE 4** (K-Fold) → Core functionality
-5. ⏸️ **FASE 6** (Focal Loss) → Parallelo a Fase 4, indipendente
-6. ⏸️ **FASE 5** (Ensemble) → Dipende da Fase 4
+2. ✅ **FASE 2** (Best Model) → Riduce spazio disco subito [COMPLETATA]
+3. ✅ **FASE 3** (Early Stop) → Migliora qualità training [COMPLETATA]
+4. ⚠️ **FASE 4** (K-Fold) → Core functionality [IN CORSO - 4.3]
+   - ✅ 4.1: stratified_train_val_test_split
+   - ✅ 4.2: KFoldTrainer
+   - ⚠️ 4.3: Integrazione train_llm.py [ATTIVO]
+5. ⏸️ **FASE 5** (Ensemble) → Dipende da Fase 4
+6. ⏸️ **FASE 6** (Focal Loss) → Parallelo a Fase 4, indipendente
 7. ⏸️ **FASE 7** (Logging) → Polish
 8. ⏸️ **FASE 8** (Testing) → Validazione finale
 
@@ -231,17 +234,98 @@ src/training/
 ├── utils.py                 [~470 righe] Split, metrics, weights
 ├── checkpoint.py            [~330 righe] ModelCheckpoint [FASE 2]
 ├── early_stopping.py        [~350 righe] EarlyStopping [FASE 3]
-└── kfold_trainer.py         [~420 righe] KFoldTrainer [FASE 4]
+├── kfold_trainer.py         [~420 righe] KFoldTrainer [FASE 4]
+└── train_llm.py             [~575 righe] Main training script [FASE 4.3]
 
 tests/
-├── test_training_phase1.py  [~450 righe] 23 test cases
-├── test_training_phase2.py  [~240 righe]  9 test cases
-├── test_training_phase3.py  [~220 righe] 11 test cases
-└── test_training_phase4.py  [~280 righe]  9 test cases
+├── test_training_phase1.py    [~450 righe] 23 test cases
+├── test_training_phase2.py    [~240 righe]  9 test cases
+├── test_training_phase3.py    [~220 righe] 11 test cases
+├── test_training_phase4.py    [~280 righe]  9 test cases
+├── test_training_phase4_3_1.py [~252 righe] 11 test cases [FASE 4.3.1]
+└── test_training_phase4_3_2.py [~350 righe]  3 test cases [FASE 4.3.2]
 ```
 
-**Totale FASE 1-4**: ~2730 righe codice + ~1190 righe test = **3920 righe**  
-**52 test cases pytest, tutti passing ✅**
+**Totale FASE 1-4.3.2**: ~3705 righe codice + ~1792 righe test = **5497 righe**  
+**66 test cases pytest, tutti passing ✅**
+
+---
+
+## 🔧 FASE 4.3 - Integrazione train_llm.py
+
+### ✅ 4.3.1 - Gestione CLI Arguments e TrainingConfig [COMPLETATO]
+**Decisioni:**
+- ✅ Argparse (resto progetto lo usa)
+- ✅ CLI args: model_name, story_format, use_kfold, n_folds, use_focal_loss, focal_alpha, focal_gamma, patience, epochs
+- ✅ Senza --use_kfold → training semplice (backward compatibility)
+- ✅ No config YAML, solo CLI
+
+**Implementazione:**
+- ✅ Aggiunto argparse con 10 parametri CLI
+- ✅ Funzione `parse_args()` per parsing argomenti
+- ✅ Funzione `create_training_config(args)` per creare TrainingConfig
+- ✅ Sostituiti STORY_FORMAT, LEARNING_RATE, BATCH con config
+- ✅ Mapping: epochs→num_epochs, patience→early_stopping_patience, use_focal_loss→loss_function
+- ✅ Test: 11 test cases, tutti passing ✅
+- ✅ File: tests/test_training_phase4_3_1.py (~260 righe)
+
+### ✅ 4.3.2 - Refactor pre_train() - Signature e Early Stopping [COMPLETATO]
+**Decisioni:**
+- ✅ Tutto su TrainingConfig (rimuovi num_epochs, min_loss, model_output_basename)
+- ✅ Rimuovi start_epoch (sempre 0)
+- ✅ Nome modello: config.get_model_filename(fold)
+- ✅ Accelerator globale
+
+**Implementazione:**
+- ✅ Nuova signature: pre_train(model, optimizer, train_dataloader, val_dataloader, scheduler, criterion, accelerator, config, checkpoint, early_stopping, fold)
+- ✅ Rimosso patience_counter custom, usato EarlyStopping class
+- ✅ Compute metrics con balanced_accuracy come metrica principale
+- ✅ ModelCheckpoint.update() per salvare best model
+- ✅ EarlyStopping.update() + should_stop() per controllo
+- ✅ restore_weights() per ripristinare best model al trigger
+- ✅ Logging dettagliato per epoch (train/val loss e balanced_accuracy)
+- ✅ Test: 3 test cases, tutti passing ✅
+- ✅ File: tests/test_training_phase4_3_2.py (~350 righe)
+
+### 4.3.3 - Loss Function
+**Decisioni:**
+- ✅ Class weights SOLO per CrossEntropyLoss (calcolo automatico)
+- ✅ Focal Loss: gestisce già pesi con α/γ (no class weights)
+- ✅ Metodo calcolo pesi: fisso 'balanced', no parametro CLI
+
+### 4.3.4 - Checkpoint e Model Saving
+**Decisioni:**
+- ✅ Metrica: balanced_accuracy
+- ✅ History gestito da checkpoint.save_history()
+- ✅ Stampe centralizzate
+
+### 4.3.5 - K-Fold Wrapper
+**Decisioni:**
+- ✅ Ricrea optimizer/scheduler/accelerator per ogni fold
+- ✅ torch.cuda.empty_cache() dopo ogni fold
+- ✅ model.load_state_dict() per "modello vergine" ogni fold
+- ✅ Usa best model del best fold (no ensemble per ora)
+
+### 4.3.6 - Data Loading e Split Stratificato
+**Decisioni:**
+- ✅ Test set sempre 20% separato (anche training semplice)
+- ✅ Split: train+val/test (80/20) → train/val (80/20 del 80%)
+- ✅ Salva label2id/id2label in JSON per prediction
+
+### 4.3.7 - Test di Integrazione
+**Decisioni:**
+- ✅ Test con dati mock + test con pickle reali
+- ✅ Test GPU con skip se CUDA non disponibile
+- ✅ Test path corretti file salvati
+
+### 4.3.8 - Documentazione
+**Decisioni:**
+- ✅ File separato: docs/TRAIN_LLM_INTEGRATION.md
+- ✅ Riferimento nel PIANO_LAVORI
+- ✅ Esempi bash script
+- ✅ Diagramma flusso Mermaid
+
+**Riferimento completo:** [TRAIN_LLM_INTEGRATION.md](./TRAIN_LLM_INTEGRATION.md)
 
 ---
 

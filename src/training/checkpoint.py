@@ -230,6 +230,18 @@ class ModelCheckpoint:
         return save_path
     
     def get_best_info(self) -> Dict[str, Any]:
+        """
+        Returns a dictionary containing information about the best model found during training.
+
+        Returns:
+            Dict[str, Any]: A dictionary with the following keys:
+                - "metric": The name of the evaluation metric used.
+                - "best_value": The best value achieved for the metric.
+                - "best_epoch": The epoch at which the best value was achieved.
+                - "best_path": The file path to the best model checkpoint, or None if not available.
+                - "fold": The fold number (for cross-validation, if applicable).
+                - "num_updates": The number of updates (history entries) recorded.
+        """
         """Restituisce info sul best model"""
         return {
             "metric": self.metric,

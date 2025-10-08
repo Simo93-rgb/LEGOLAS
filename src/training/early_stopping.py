@@ -76,6 +76,16 @@ class EarlyStopping:
         self.ratio_history: list[float] = []
     
     def _save_model_state(self, model: torch.nn.Module, epoch: int) -> Dict[str, Any]:
+        """
+        Saves a deep copy of the model's state dictionary along with the current epoch.
+
+        Args:
+            model (torch.nn.Module): The model whose state is to be saved.
+            epoch (int): The current epoch number.
+
+        Returns:
+            Dict[str, Any]: A dictionary containing the epoch and a deep copy of the model's state dictionary.
+        """
         """Salva lo stato del modello con deep copy"""
         return {
             "epoch": epoch,
