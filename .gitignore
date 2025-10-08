@@ -13,3 +13,5 @@ __pycache__/
 .vscode/
 logs/
 prediction/
+*:Zone.Identifier
+training_functionality_to_import/
