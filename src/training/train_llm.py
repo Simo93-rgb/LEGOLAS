@@ -1,5 +1,6 @@
 import pickle
 import pandas as pd
+import json
 from sklearn.model_selection import train_test_split
 from transformers import AutoModel, AutoTokenizer
 from src.data.history_dataset import TextDataset
@@ -28,7 +29,7 @@ from src.training.config import TrainingConfig
 from src.training.checkpoint import ModelCheckpoint
 from src.training.early_stopping import EarlyStopping
 from src.training.focal_loss import create_loss_from_config
-from src.training.utils import compute_class_weights, compute_metrics
+from src.training.utils import compute_class_weights, compute_metrics, analyze_class_distribution
 from src.training.kfold_trainer import KFoldTrainer
 
 def set_seed(seed):
@@ -407,13 +408,32 @@ if __name__ == '__main__':
     with open(label_test_path, 'rb') as f:
         label_test = pickle.load(f)
 
-    label2id = {}
-    id2label = {}
-    i = 0
-    for l in list(np.unique(label_train)):
-        label2id[l] = i
-        id2label[i] = l
-        i = i + 1
+    # Crea label mapping generico (CLS_0, CLS_1, ...)
+    unique_labels = list(np.unique(label_train))
+    num_classes = len(unique_labels)
+    
+    label2id = {label: i for i, label in enumerate(unique_labels)}
+    id2label = {i: label for i, label in enumerate(unique_labels)}
+    
+    # Crea label mapping generico per export (CLS_0, CLS_1, ...)
+    label2id_export = {f"CLS_{i}": i for i in range(num_classes)}
+    id2label_export = {str(i): f"CLS_{i}" for i in range(num_classes)}
+    
+    # Salva label mapping in JSON (per eval_model.py e extract_explainability.py)
+    label_mapping_path = config.reports_dir / 'label_mapping.json'
+    label_mapping = {
+        "label2id": label2id_export,
+        "id2label": id2label_export,
+        "num_classes": num_classes
+    }
+    
+    with open(label_mapping_path, 'w') as f:
+        json.dump(label_mapping, f, indent=2)
+    
+    print(f"\n💾 Label mapping salvato: {label_mapping_path}")
+    print(f"   Num classes: {num_classes}")
+    for cls_name, cls_id in label2id_export.items():
+        print(f"   {cls_name} → {cls_id}")
 
     label_train_int = []
     for l in label_train:
@@ -428,6 +448,24 @@ if __name__ == '__main__':
                                                     train, label_train_int,
                                                       test_size=0.2, random_state=config.seed, shuffle=True,
                                                       stratify=label_train_int)
+
+    # Analizza e stampa distribuzione classi
+    print(f"\n📊 Distribuzione Classi dopo Split:")
+    print(f"\n   Training Set ({len(y_train)} samples):")
+    train_dist = analyze_class_distribution(np.array(y_train))
+    for class_id, info in train_dist.items():
+        print(f"      Class {class_id} (CLS_{class_id}): {info['count']:4d} samples ({info['percentage']:.1f}%)")
+    
+    print(f"\n   Validation Set ({len(y_val)} samples):")
+    val_dist = analyze_class_distribution(np.array(y_val))
+    for class_id, info in val_dist.items():
+        print(f"      Class {class_id} (CLS_{class_id}): {info['count']:4d} samples ({info['percentage']:.1f}%)")
+    
+    print(f"\n   Test Set ({len(label_test_int)} samples):")
+    test_dist = analyze_class_distribution(np.array(label_test_int))
+    for class_id, info in test_dist.items():
+        print(f"      Class {class_id} (CLS_{class_id}): {info['count']:4d} samples ({info['percentage']:.1f}%)")
+    print()
 
 
     # Carica configurazioni modelli da YAML

@@ -334,11 +334,24 @@ tests/
 - ✅ Backward compatibility: simple training preservato senza modifiche
 - ✅ No test specifici (logica già coperta da 9 test FASE 4.0)
 
-### 4.3.6 - Data Loading e Split Stratificato
+### ✅ 4.3.6 - Data Loading e Split Stratificato [COMPLETATO]
 **Decisioni:**
-- ✅ Test set sempre 20% separato (anche training semplice)
-- ✅ Split: train+val/test (80/20) → train/val (80/20 del 80%)
-- ✅ Salva label2id/id2label in JSON per prediction
+- ✅ Test set già separato upstream (train.pickle / test.pickle) → manteniamo
+- ✅ Split train/val già stratificato con sklearn → manteniamo (funziona bene)
+- ✅ Label mapping generico: `CLS_0`, `CLS_1` invece di label specifiche
+- ✅ Salva label2id/id2label in JSON per eval_model.py e extract_explainability.py
+
+**Implementazione:**
+- ✅ Import `analyze_class_distribution` da utils
+- ✅ Creazione label mapping generico per export (`CLS_0`, `CLS_1`)
+- ✅ Salvataggio JSON: `output/reports/label_mapping.json`
+- ✅ Formato: `{"label2id": {"CLS_0": 0, ...}, "id2label": {"0": "CLS_0", ...}, "num_classes": 2}`
+- ✅ Logging distribuzione classi per train/val/test set
+- ✅ No test specifici (logica semplice: JSON save + print stats)
+
+**Note:**
+- Manteniamo `train_test_split` sklearn (già stratificato, no benefici a cambiare)
+- `stratified_train_val_test_split()` da FASE 1 rimane inutilizzato → vedi Refactoring Futuro
 
 ### 4.3.7 - Test di Integrazione
 **Decisioni:**
@@ -354,6 +367,24 @@ tests/
 - ✅ Diagramma flusso Mermaid
 
 **Riferimento completo:** [TRAIN_LLM_INTEGRATION.md](./TRAIN_LLM_INTEGRATION.md)
+
+---
+
+## 🔄 REFACTORING FUTURO
+
+### Codice Inutilizzato da Rimuovere/Consolidare
+
+**1. `stratified_train_val_test_split()` in `src/training/utils.py`**
+- **Stato**: Implementata in FASE 1.3, mai utilizzata
+- **Motivo**: `train_llm.py` usa `train_test_split` di sklearn (già stratificato, test set già separato upstream)
+- **Azione futura**: 
+  - Opzione A: Rimuovere se confermato che non serve
+  - Opzione B: Refactor pipeline XES per usarla upstream (split train/val/test prima del pickle)
+- **Priorità**: Bassa (non impatta funzionalità)
+
+**2. Possibili Duplicazioni da Verificare**
+- **Da verificare**: Controllare se ci sono altre utility FASE 1 non utilizzate
+- **Action**: Audit completo dopo FASE 8 (quando tutto è integrato)
 
 ---
 
