@@ -27,6 +27,8 @@ from transformers import BertModel, BertConfig
 from src.training.config import TrainingConfig
 from src.training.checkpoint import ModelCheckpoint
 from src.training.early_stopping import EarlyStopping
+from src.training.focal_loss import create_loss_from_config
+from src.training.utils import compute_class_weights
 
 def set_seed(seed):
     torch.manual_seed(seed)
@@ -523,9 +525,28 @@ if __name__ == '__main__':
     print(model)
 
     # ===== LOSS FUNCTION =====
-    # Verrà creata dinamicamente nel prossimo punto (4.3.3)
-    # Per ora usa CrossEntropyLoss globale
-    criterion = nn.CrossEntropyLoss()
+    print(f"\n📊 Configurazione Loss Function:")
+    print(f"   Loss: {config.loss_function.upper()}")
+    
+    if config.loss_function == 'focal':
+        # Focal Loss - usa α/γ da config
+        print(f"   Focal α: {config.focal_alpha}")
+        print(f"   Focal γ: {config.focal_gamma}")
+        criterion = create_loss_from_config(config)
+    else:
+        # Cross Entropy Loss - calcola class weights automaticamente
+        print(f"   Calcolo class weights (method='balanced')...")
+        class_weights = compute_class_weights(
+            y=np.array(label_train_int),
+            method='balanced'
+        )
+        print(f"   Class weights: {class_weights}")
+        
+        # Converti in tensor e sposta su device
+        class_weights_tensor = torch.tensor(class_weights, dtype=torch.float32).to(device)
+        criterion = nn.CrossEntropyLoss(weight=class_weights_tensor)
+    
+    print(f"   ✅ Loss function configurata!\n")
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate)
 

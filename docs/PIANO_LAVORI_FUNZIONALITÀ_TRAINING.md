@@ -243,11 +243,12 @@ tests/
 ├── test_training_phase3.py    [~220 righe] 11 test cases
 ├── test_training_phase4.py    [~280 righe]  9 test cases
 ├── test_training_phase4_3_1.py [~252 righe] 11 test cases [FASE 4.3.1]
-└── test_training_phase4_3_2.py [~350 righe]  3 test cases [FASE 4.3.2]
+├── test_training_phase4_3_2.py [~350 righe]  3 test cases [FASE 4.3.2]
+└── test_training_phase4_3_3.py [~200 righe]  9 test cases [FASE 4.3.3]
 ```
 
-**Totale FASE 1-4.3.2**: ~3705 righe codice + ~1792 righe test = **5497 righe**  
-**66 test cases pytest, tutti passing ✅**
+**Totale FASE 1-4.3.3**: ~3705 righe codice + ~1992 righe test = **5697 righe**  
+**75 test cases pytest, tutti passing ✅**
 
 ---
 
@@ -287,11 +288,19 @@ tests/
 - ✅ Test: 3 test cases, tutti passing ✅
 - ✅ File: tests/test_training_phase4_3_2.py (~350 righe)
 
-### 4.3.3 - Loss Function
+### ✅ 4.3.3 - Loss Function [COMPLETATO]
 **Decisioni:**
 - ✅ Class weights SOLO per CrossEntropyLoss (calcolo automatico)
 - ✅ Focal Loss: gestisce già pesi con α/γ (no class weights)
 - ✅ Metodo calcolo pesi: fisso 'balanced', no parametro CLI
+
+**Implementazione:**
+- ✅ Import `create_loss_from_config()` e `compute_class_weights()`
+- ✅ Path Focal Loss: usa `create_loss_from_config(config)` con α/γ da config
+- ✅ Path Cross Entropy: calcola class weights con metodo 'balanced', crea `nn.CrossEntropyLoss(weight=weights_tensor)`
+- ✅ Logging configurazione loss function all'avvio
+- ✅ Test: 9 test cases, tutti passing ✅
+- ✅ File: tests/test_training_phase4_3_3.py (~200 righe)
 
 ### 4.3.4 - Checkpoint e Model Saving
 **Decisioni:**
