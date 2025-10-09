@@ -1,4 +1,5 @@
 /backup_*/
+output/
 output/models/*
 output/stories/*
 !output/models/.gitkeep
@@ -13,3 +14,5 @@ __pycache__/
 .vscode/
 logs/
 prediction/
+*:Zone.Identifier
+training_functionality_to_import/

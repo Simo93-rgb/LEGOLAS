@@ -3,10 +3,18 @@ from transformers import GPT2Model, GPT2Tokenizer
 
 
 class LongFormerMultiClassificationHeads(nn.Module):
-    def __init__(self, longformer):
+    def __init__(self, longformer, num_classes: int = 8):
+        """
+        Classificatore multi-classe per modelli Transformer (BERT, ClinicalBERT, etc.)
+        
+        Args:
+            longformer: Modello base (BERT, RoBERTa, ClinicalBERT, etc.)
+            num_classes: Numero di classi per classificazione (default: 8 per backward compatibility)
+        """
         super(LongFormerMultiClassificationHeads, self).__init__()
         self.longformer = longformer
-        self.output_layer = nn.Linear(longformer.config.hidden_size, 8)
+        self.num_classes = num_classes
+        self.output_layer = nn.Linear(longformer.config.hidden_size, num_classes)
 
     def forward(self, input_ids, attention_mask):
         outputs = self.longformer(input_ids=input_ids, attention_mask=attention_mask)
