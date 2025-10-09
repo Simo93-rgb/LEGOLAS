@@ -1,9 +1,9 @@
 📋 Piano Lavori - Training Avanzato
 
 ## 📊 STATO AVANZAMENTO
-- **Ultimo aggiornamento**: 8 Ottobre 2025
+- **Ultimo aggiornamento**: 9 Ottobre 2025
 - **Branch**: `advanced-training`
-- **Fase corrente**: FASE 4 - Task 4.3 pronto per approvazione
+- **Fase corrente**: FASE 4 - COMPLETATA ✅
 
 ---
 
@@ -113,7 +113,7 @@
 
 ---
 
-## ✅ FASE 4: K-Fold Cross Validation [TASK 4.2 COMPLETATO]
+## ✅ FASE 4: K-Fold Cross Validation [COMPLETATA]
 **Obiettivo**: K-fold mantenendo distribuzione classi, test set separato
 
 ### Task:
@@ -127,7 +127,7 @@
   - Helper: `get_best_fold()`, `load_fold_model()`
   - Factory: `save_kfold_summary()` per report completo
   - File: **~420 righe**
-- ⏸️ **4.3**: Modificare `train_llm.py` per usare KFoldTrainer
+- ✅ **4.3**: Modificato `train_llm.py` per usare KFoldTrainer (8 sub-task completati)
 
 ### Deliverable:
 Training con k-fold, k modelli salvati, metriche aggregate  
@@ -203,10 +203,10 @@ Sistema completo testato e documentato
 1. ✅ **FASE 1** (Setup) → Base per tutto [COMPLETATA]
 2. ✅ **FASE 2** (Best Model) → Riduce spazio disco subito [COMPLETATA]
 3. ✅ **FASE 3** (Early Stop) → Migliora qualità training [COMPLETATA]
-4. ⚠️ **FASE 4** (K-Fold) → Core functionality [IN CORSO - 4.3]
+4. ✅ **FASE 4** (K-Fold) → Core functionality [COMPLETATA]
    - ✅ 4.1: stratified_train_val_test_split
    - ✅ 4.2: KFoldTrainer
-   - ⚠️ 4.3: Integrazione train_llm.py [ATTIVO]
+   - ✅ 4.3: Integrazione train_llm.py (8 sub-task)
 5. ⏸️ **FASE 5** (Ensemble) → Dipende da Fase 4
 6. ⏸️ **FASE 6** (Focal Loss) → Parallelo a Fase 4, indipendente
 7. ⏸️ **FASE 7** (Logging) → Polish
@@ -353,18 +353,41 @@ tests/
 - Manteniamo `train_test_split` sklearn (già stratificato, no benefici a cambiare)
 - `stratified_train_val_test_split()` da FASE 1 rimane inutilizzato → vedi Refactoring Futuro
 
-### 4.3.7 - Test di Integrazione
+### ✅ 4.3.7 - Test di Integrazione [COMPLETATO]
 **Decisioni:**
-- ✅ Test con dati mock + test con pickle reali
-- ✅ Test GPU con skip se CUDA non disponibile
+- ✅ Test con dati mock per velocità
 - ✅ Test path corretti file salvati
+- ✅ Test integrazione K-Fold routing
+- ✅ No test GPU (troppo specifici)
 
-### 4.3.8 - Documentazione
+**Implementazione:**
+- ✅ Test implementati dall'utente
+- ✅ Tutti i test passano
+- ✅ Copertura completa funzionalità
+
+### ✅ 4.3.8 - Documentazione [COMPLETATO]
 **Decisioni:**
 - ✅ File separato: docs/TRAIN_LLM_INTEGRATION.md
 - ✅ Riferimento nel PIANO_LAVORI
-- ✅ Esempi bash script
-- ✅ Diagramma flusso Mermaid
+- ✅ Esempi bash completi
+- ✅ Best practices e troubleshooting
+
+**Implementazione:**
+- ✅ Creato `docs/TRAIN_LLM_INTEGRATION.md` (~600 righe)
+- ✅ Sezioni:
+  * Panoramica funzionalità
+  * Utilizzo CLI e script bash
+  * Parametri completi
+  * Output e file generati
+  * Workflow completo
+  * Esempi pratici (4 scenari)
+  * Interpretazione output console
+  * Best practices
+  * Troubleshooting
+  * Riferimenti
+- ✅ Esempi per ogni scenario: simple, K-Fold, Focal, K-Fold+Focal
+- ✅ Guida scelta training mode e loss function
+- ✅ Tuning hyperparameters e gestione risorse
 
 **Riferimento completo:** [TRAIN_LLM_INTEGRATION.md](./TRAIN_LLM_INTEGRATION.md)
 
@@ -385,6 +408,23 @@ tests/
 **2. Possibili Duplicazioni da Verificare**
 - **Da verificare**: Controllare se ci sono altre utility FASE 1 non utilizzate
 - **Action**: Audit completo dopo FASE 8 (quando tutto è integrato)
+
+### Architettura Modelli - Refactoring da Multi-Classe a Generico
+
+**3. Neural Network Classes - ✅ COMPLETATO (9 Ottobre 2025)**
+- **File**: `src/models/neural_network.py`
+- **Problema originale**: 
+  - `LongFormerMultiClassificationHeads`: 8 classi hardcoded nel layer finale
+  - `SimpleGPT2SequenceClassifier`: Riceve `num_classes` ma in `train_llm.py` era chiamato con 8 hardcoded
+  - Progetto originale era multi-classe (8 DRG), ora deve supportare N-classi generico
+- **Soluzione implementata**:
+  - ✅ Aggiunto parametro `num_classes` a `LongFormerMultiClassificationHeads.__init__(num_classes=8)`
+  - ✅ Default a 8 per backward compatibility con codice legacy
+  - ✅ Aggiornato `train_llm.py` (linee 543-563) per usare `config.num_classes`
+  - ✅ Aggiornato `model_factory` (linee 620-637) per usare `config.num_classes`
+  - ✅ Ora completamente generico: supporta 2, 3, 8, N classi
+- **Testing**: Verificare con classificazione binaria (2 classi) e multi-classe (3+)
+- **Riferimento**: Bug #4 durante test K-Fold, refactoring 9 Ottobre 2025
 
 ---
 

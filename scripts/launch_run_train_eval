@@ -1,5 +1,20 @@
 #!/bin/bash
 # Script helper per training e evaluation con storie XES
+#
+# FUNZIONALITÀ:
+# - Scelta formato storie (narrativo/bullet/clinical)
+# - Scelta modello (da YAML o legacy)
+# - K-Fold Cross Validation (opzionale)
+# - Focal Loss (opzionale, per classi sbilanciate)
+# - Configurazione hyperparameters (epochs, patience, batch_size, lr)
+# - Training + Evaluation automatici
+#
+# AGGIORNATO: 9 Ottobre 2025 - Supporto K-Fold e Focal Loss (FASE 4)
+#
+# USO: ./scripts/launch_run_train_eval
+#      Menu interattivo guida attraverso tutte le opzioni
+#
+# DOCUMENTAZIONE: docs/TRAIN_LLM_INTEGRATION.md
 
 # ============================================================
 # PATH CONFIGURATION
@@ -49,16 +64,6 @@ case $choice in
 esac
 
 echo -e "\n${GREEN}📝 Formato selezionato: ${FORMAT}${NC}\n"
-
-# Aggiorna STORY_FORMAT in train_llm.py
-echo -e "${BLUE}📝 Configurazione train_llm.py...${NC}"
-sed -i "s/STORY_FORMAT = '.*'/STORY_FORMAT = '${FORMAT}'/" src/training/train_llm.py
-echo -e "   ✓ STORY_FORMAT = '${FORMAT}'"
-
-# Aggiorna STORY_FORMAT in eval_model.py
-echo -e "${BLUE}📝 Configurazione eval_model.py...${NC}"
-sed -i "s/STORY_FORMAT = '.*'/STORY_FORMAT = '${FORMAT}'/" src/training/eval_model.py
-echo -e "   ✓ STORY_FORMAT = '${FORMAT}'"
 
 # Menu scelta modello
 echo -e "\n${YELLOW}Scegli il modello da usare:${NC}"
@@ -132,10 +137,116 @@ else
     echo -e "\n${GREEN}🤖 Modello selezionato: ${MODEL}${NC}\n"
 fi
 
-# Aggiorna model_name in train_llm.py
-sed -i "s/model_name = '.*'/model_name = '${MODEL}'/" src/training/train_llm.py
+# ============================================================
+# MENU OPZIONI TRAINING AVANZATE
+# ============================================================
 
-# Menu azione
+# Menu K-Fold
+echo -e "${YELLOW}Vuoi usare K-Fold Cross Validation?${NC}"
+echo "  1) No - Training semplice (più veloce, per test)"
+echo "  2) Sì - K-Fold CV (più robusto, metriche affidabili)"
+echo ""
+read -p "Scelta [1-2, default=1]: " kfold_choice
+
+USE_KFOLD=""
+N_FOLDS=10
+
+case $kfold_choice in
+    2)
+        USE_KFOLD="--use_kfold"
+        echo ""
+        read -p "Numero di folds [default=10]: " n_folds_input
+        if [[ "$n_folds_input" =~ ^[0-9]+$ ]] && [ "$n_folds_input" -ge 2 ]; then
+            N_FOLDS=$n_folds_input
+        fi
+        echo -e "\n${GREEN}🔄 K-Fold attivato: ${N_FOLDS} folds${NC}"
+        ;;
+    *)
+        echo -e "\n${GREEN}⚡ Training semplice (no K-Fold)${NC}"
+        ;;
+esac
+
+# Menu Loss Function
+echo ""
+echo -e "${YELLOW}Quale Loss Function vuoi usare?${NC}"
+echo "  1) Cross Entropy (default, con class weights automatici)"
+echo "  2) Focal Loss (per classi molto sbilanciate)"
+echo ""
+read -p "Scelta [1-2, default=1]: " loss_choice
+
+USE_FOCAL=""
+FOCAL_ALPHA="0.25 0.75"
+FOCAL_GAMMA="2.0"
+
+case $loss_choice in
+    2)
+        USE_FOCAL="--use_focal_loss"
+        echo ""
+        echo -e "${YELLOW}Configurazione Focal Loss:${NC}"
+        read -p "Alpha per classe 0 [default=0.25]: " alpha0
+        read -p "Alpha per classe 1 [default=0.75]: " alpha1
+        read -p "Gamma (focusing) [default=2.0]: " gamma
+        
+        # Valida input
+        if [[ "$alpha0" =~ ^[0-9.]+$ ]]; then
+            FOCAL_ALPHA="$alpha0 ${alpha1:-0.75}"
+        fi
+        if [[ "$gamma" =~ ^[0-9.]+$ ]]; then
+            FOCAL_GAMMA="$gamma"
+        fi
+        
+        echo -e "\n${GREEN}🎯 Focal Loss: α=[${FOCAL_ALPHA}], γ=${FOCAL_GAMMA}${NC}"
+        ;;
+    *)
+        echo -e "\n${GREEN}📊 Cross Entropy con class weights automatici${NC}"
+        ;;
+esac
+
+# Menu Hyperparameters
+echo ""
+echo -e "${YELLOW}Configurazione Training:${NC}"
+read -p "Numero epoche [default=10]: " epochs
+read -p "Patience early stopping [default=5]: " patience
+read -p "Batch size [default=256]: " batch_size
+read -p "Learning rate [default=1e-5]: " lr
+
+# Defaults
+EPOCHS=${epochs:-10}
+PATIENCE=${patience:-5}
+BATCH_SIZE=${batch_size:-256}
+LR=${lr:-1e-5}
+
+echo ""
+echo -e "${GREEN}✅ Configurazione:${NC}"
+echo "   Epochs: ${EPOCHS}"
+echo "   Patience: ${PATIENCE}"
+echo "   Batch size: ${BATCH_SIZE}"
+echo "   Learning rate: ${LR}"
+
+# Costruisci comando training
+TRAIN_CMD="uv run python src/training/train_llm.py \
+    --story_format ${FORMAT} \
+    --model ${MODEL} \
+    --epochs ${EPOCHS} \
+    --patience ${PATIENCE} \
+    --batch_size ${BATCH_SIZE} \
+    --learning_rate ${LR}"
+
+# Aggiungi opzioni K-Fold
+if [ -n "$USE_KFOLD" ]; then
+    TRAIN_CMD="${TRAIN_CMD} ${USE_KFOLD} --n_folds ${N_FOLDS}"
+fi
+
+# Aggiungi opzioni Focal Loss
+if [ -n "$USE_FOCAL" ]; then
+    TRAIN_CMD="${TRAIN_CMD} ${USE_FOCAL} --focal_alpha ${FOCAL_ALPHA} --focal_gamma ${FOCAL_GAMMA}"
+fi
+
+# ============================================================
+# MENU AZIONE
+# ============================================================
+
+echo ""
 echo -e "${YELLOW}Cosa vuoi fare?${NC}"
 echo "  1) Solo training"
 echo "  2) Solo evaluation (modello già addestrato)"
@@ -150,7 +261,8 @@ case $action in
         echo -e "${BLUE}════════════════════════════════════════════════════════${NC}"
         echo -e "${BLUE}   TRAINING${NC}"
         echo -e "${BLUE}════════════════════════════════════════════════════════${NC}\n"
-        uv run python src/training/train_llm.py
+        echo -e "${YELLOW}Comando: ${TRAIN_CMD}${NC}\n"
+        eval ${TRAIN_CMD}
         ;;
     2)
         echo -e "${BLUE}════════════════════════════════════════════════════════${NC}"
@@ -181,7 +293,8 @@ case $action in
         echo -e "${BLUE}════════════════════════════════════════════════════════${NC}"
         echo -e "${BLUE}   TRAINING${NC}"
         echo -e "${BLUE}════════════════════════════════════════════════════════${NC}\n"
-        uv run python src/training/train_llm.py
+        echo -e "${YELLOW}Comando: ${TRAIN_CMD}${NC}\n"
+        eval ${TRAIN_CMD}
         
         if [ $? -eq 0 ]; then
             echo -e "\n${GREEN}✅ Training completato!${NC}\n"
@@ -229,8 +342,25 @@ if [ -d "${PREDICTION_DIR}" ]; then
 fi
 
 echo -e "${YELLOW}💡 Suggerimenti:${NC}"
-echo "   - Modello salvato in: ${MODELS_DIR}/xes_${FORMAT}_${MODEL}*.pth"
-echo "   - Report in: ${PREDICTION_DIR}/xes_${FORMAT}_${MODEL}_report.txt"
-echo "   - Log evaluation in: ${EVALUATION_DIR}/eval_${FORMAT}_${MODEL}_*.log"
-echo "   - Per provare altro formato: esegui di nuovo questo script"
-echo "   - Path definiti in: src/config/paths.py"
+
+# Mostra path diversi se K-Fold o simple
+if [ -n "$USE_KFOLD" ]; then
+    echo "   - Modelli salvati (${N_FOLDS} fold): ${MODELS_DIR}/best_model_${FORMAT}_${MODEL}_fold*.pth"
+    echo "   - Risultati aggregati: ${MODELS_DIR}/../reports/kfold_aggregated_results.json"
+    echo "   - Metriche per fold: ${MODELS_DIR}/../reports/fold_*_metrics.json"
+else
+    echo "   - Modello salvato in: ${MODELS_DIR}/best_model_${FORMAT}_${MODEL}.pth"
+    echo "   - Checkpoint history: ${MODELS_DIR}/../reports/checkpoint_history.json"
+fi
+
+echo "   - Label mapping: ${MODELS_DIR}/../reports/label_mapping.json"
+echo "   - Report evaluation: ${PREDICTION_DIR}/xes_${FORMAT}_${MODEL}_report.txt"
+echo "   - Log evaluation: ${EVALUATION_DIR}/eval_${FORMAT}_${MODEL}_*.log"
+echo ""
+echo -e "${YELLOW}📚 Documentazione:${NC}"
+echo "   - Guida completa: docs/TRAIN_LLM_INTEGRATION.md"
+echo "   - Path management: src/config/paths.py"
+echo ""
+echo -e "${YELLOW}🔄 Per rilanciare:${NC}"
+echo "   - Stesso script: ./scripts/launch_run_train_eval"
+echo "   - CLI diretta: uv run python src/training/train_llm.py --help"

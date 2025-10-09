@@ -285,9 +285,14 @@ def pre_train(
         
         # ===== LOGGING =====
         if accelerator.is_main_process:
-            print(f"Epoch {epoch + 1}/{config.num_epochs}")
+            fold_info = f"[Fold {fold + 1}/{config.n_folds}] " if fold is not None else ""
+            print(f"{fold_info}Epoch {epoch + 1}/{config.num_epochs}")
             print(f"  Train Loss: {avg_train_loss:.4f} | Train Bal.Acc: {train_metrics['balanced_accuracy']:.4f}")
             print(f"  Val Loss:   {avg_val_loss:.4f} | Val Bal.Acc:   {val_metrics['balanced_accuracy']:.4f}")
+            
+            # Flush stdout per vedere output in real-time (importante per K-Fold)
+            import sys
+            sys.stdout.flush()
             
             # ===== MODEL CHECKPOINT =====
             # Usa balanced_accuracy come metrica principale
@@ -313,6 +318,8 @@ def pre_train(
             
             if improved:
                 print(f"  ✅ Best model saved! Bal.Acc: {val_metrics['balanced_accuracy']:.4f}")
+                import sys
+                sys.stdout.flush()
             
             # ===== EARLY STOPPING =====
             # Passa val_loss, train_loss e model per controllo
@@ -333,6 +340,8 @@ def pre_train(
                     restored_epoch = early_stopping.restore_weights(unwrapped_model)
                     print(f"   ✅ Ripristinati pesi epoca {restored_epoch}")
                 
+                import sys
+                sys.stdout.flush()
                 break
             
             # ===== SCHEDULER STEP =====
@@ -342,8 +351,9 @@ def pre_train(
     
     # Fine training
     if accelerator.is_main_process:
+        fold_info = f"[Fold {fold + 1}/{config.n_folds}] " if fold is not None else ""
         print(f"\n{'='*60}")
-        print(f"  Training completato!")
+        print(f"  {fold_info}Training completato!")
         best_info = checkpoint.get_best_info()
         print(f"  Best epoch: {best_info['best_epoch']}")
         print(f"  Best Bal.Acc: {best_info['best_value']:.4f}")
@@ -359,6 +369,12 @@ def pre_train(
             print(f"     Trigger epoch: {early_stopping.trigger_epoch}")
             print(f"     Best val loss: {early_stopping.best_val_loss:.4f}")
             print(f"     Wait count: {early_stopping.wait_count}/{early_stopping.patience}")
+        
+        print(f"{'='*60}\n")
+        
+        # Flush finale
+        import sys
+        sys.stdout.flush()
         
         print(f"{'='*60}\n")
 
@@ -378,7 +394,7 @@ if __name__ == '__main__':
     print(f"  Formato: {config.story_format}")
     print(f"  Modello: {config.model_name}")
     print(f"  Modalità: {'K-Fold CV' if config.use_kfold else 'Training Semplice'}")
-    print(f"  Loss: {'Focal Loss' if config.use_focal_loss else 'Cross Entropy'}")
+    print(f"  Loss: {'Focal Loss' if config.loss_function == 'focal' else 'Cross Entropy'}")
     print(f"{'='*60}\n")
     
     # Stampa configurazione completa
@@ -452,19 +468,19 @@ if __name__ == '__main__':
     # Analizza e stampa distribuzione classi
     print(f"\n📊 Distribuzione Classi dopo Split:")
     print(f"\n   Training Set ({len(y_train)} samples):")
-    train_dist = analyze_class_distribution(np.array(y_train))
-    for class_id, info in train_dist.items():
-        print(f"      Class {class_id} (CLS_{class_id}): {info['count']:4d} samples ({info['percentage']:.1f}%)")
+    train_dist = analyze_class_distribution(np.array(y_train), print_results=False)
+    for class_name, info in train_dist["classes"].items():
+        print(f"      {class_name}: {info['count']:4d} samples ({info['percentage']:.1f}%)")
     
     print(f"\n   Validation Set ({len(y_val)} samples):")
-    val_dist = analyze_class_distribution(np.array(y_val))
-    for class_id, info in val_dist.items():
-        print(f"      Class {class_id} (CLS_{class_id}): {info['count']:4d} samples ({info['percentage']:.1f}%)")
+    val_dist = analyze_class_distribution(np.array(y_val), print_results=False)
+    for class_name, info in val_dist["classes"].items():
+        print(f"      {class_name}: {info['count']:4d} samples ({info['percentage']:.1f}%)")
     
     print(f"\n   Test Set ({len(label_test_int)} samples):")
-    test_dist = analyze_class_distribution(np.array(label_test_int))
-    for class_id, info in test_dist.items():
-        print(f"      Class {class_id} (CLS_{class_id}): {info['count']:4d} samples ({info['percentage']:.1f}%)")
+    test_dist = analyze_class_distribution(np.array(label_test_int), print_results=False)
+    for class_name, info in test_dist["classes"].items():
+        print(f"      {class_name}: {info['count']:4d} samples ({info['percentage']:.1f}%)")
     print()
 
 
@@ -543,23 +559,22 @@ if __name__ == '__main__':
     if config.model_name == 'gpt2':
 
         model = AutoModel.from_pretrained(weights_dir)
-        gpt2_config = GPT2Config.from_pretrained(pretrained_model_name_or_path=weights_dir, num_labels=8)
-            # Get model's tokenizer.
+        # Get model's tokenizer.
         print('Loading tokenizer...')
         tokenizer = GPT2Tokenizer.from_pretrained(pretrained_model_name_or_path=weights_dir, truncation_side='left')
-            # default to left padding
+        # default to left padding
         tokenizer.padding_side = "left"
-            # Define PAD Token = EOS Token = 50256
+        # Define PAD Token = EOS Token = 50256
         tokenizer.pad_token = tokenizer.eos_token
         model.resize_token_embeddings(len(tokenizer))
         # fix model padding token id
         model.config.pad_token_id = model.config.eos_token_id
-        model = SimpleGPT2SequenceClassifier(hidden_size=768, num_classes=8, max_seq_len=512, gpt_model=model).to(device)
+        model = SimpleGPT2SequenceClassifier(hidden_size=768, num_classes=config.num_classes, max_seq_len=512, gpt_model=model).to(device)
 
     else:
         tokenizer = AutoTokenizer.from_pretrained(weights_dir, truncation_side='left')
         model = AutoModel.from_pretrained(weights_dir)
-        model = LongFormerMultiClassificationHeads(model)
+        model = LongFormerMultiClassificationHeads(longformer=model, num_classes=config.num_classes)
         model = model.to(device)
 
 
@@ -619,24 +634,19 @@ if __name__ == '__main__':
         
         # Model factory per creare modelli freschi
         def model_factory():
-            """Crea nuovo modello con stessi parametri"""
-            if args.model == 'gpt2':
+            """Crea nuovo modello con config.num_classes"""
+            if config.model_name == 'gpt2':
+                base_model = AutoModel.from_pretrained(weights_dir)
                 return SimpleGPT2SequenceClassifier(
-                    weights_dir=weights_dir,
-                    num_labels=2,
-                    from_tf=False,
-                    dropout_rate=0.1
+                    hidden_size=768,
+                    num_classes=config.num_classes,
+                    max_seq_len=512,
+                    gpt_model=base_model
                 )
             else:
-                return LongFormerMultiClassificationHeads(
-                    model_ref=model_ref,
-                    weights_dir=weights_dir,
-                    tokenizer=tokenizer,
-                    device=device,
-                    class_heads=2,
-                    freeze_transformer=False,
-                    model_name=config.model_name
-                )
+                # BERT-based models (BERT, ClinicalBERT, RoBERTa, etc.)
+                base_model = AutoModel.from_pretrained(weights_dir)
+                return LongFormerMultiClassificationHeads(longformer=base_model, num_classes=config.num_classes)
         
         # Training function per KFoldTrainer
         def train_fold_fn(model, train_dataset, val_dataset, fold, checkpoint, early_stopping, config):

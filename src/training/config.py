@@ -34,7 +34,7 @@ class TrainingConfig:
     
     model_name: str = "clinical-bert"  # Da model_configs.yaml
     story_format: str = "narrativo"  # narrativo, bullet, clinical
-    num_classes: int = 2  # DISCHARGED (0), ADMITTED (1)
+    num_classes: int = 2  # CLS_0 (0), CLS_1 (1)
     max_length: int = 512  # Max sequence length per tokenizer
     
     # =============================================================================
