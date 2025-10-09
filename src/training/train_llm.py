@@ -346,6 +346,18 @@ def pre_train(
         print(f"  Best epoch: {best_info['best_epoch']}")
         print(f"  Best Bal.Acc: {best_info['best_value']:.4f}")
         print(f"  Modello salvato: {best_info['best_path']}")
+        
+        # Salva history delle metriche
+        history_path = checkpoint.save_history()
+        print(f"  History salvata: {history_path}")
+        
+        # Salva anche early stopping state se disponibile
+        if early_stopping.stopped:
+            print(f"\n  📊 Early Stopping Info:")
+            print(f"     Trigger epoch: {early_stopping.trigger_epoch}")
+            print(f"     Best val loss: {early_stopping.best_val_loss:.4f}")
+            print(f"     Wait count: {early_stopping.wait_count}/{early_stopping.patience}")
+        
         print(f"{'='*60}\n")
 
 

@@ -244,11 +244,12 @@ tests/
 ├── test_training_phase4.py    [~280 righe]  9 test cases
 ├── test_training_phase4_3_1.py [~252 righe] 11 test cases [FASE 4.3.1]
 ├── test_training_phase4_3_2.py [~350 righe]  3 test cases [FASE 4.3.2]
-└── test_training_phase4_3_3.py [~200 righe]  9 test cases [FASE 4.3.3]
+├── test_training_phase4_3_3.py [~200 righe]  9 test cases [FASE 4.3.3]
+└── test_training_phase4_3_4.py [~320 righe]  8 test cases [FASE 4.3.4]
 ```
 
-**Totale FASE 1-4.3.3**: ~3705 righe codice + ~1992 righe test = **5697 righe**  
-**75 test cases pytest, tutti passing ✅**
+**Totale FASE 1-4.3.4**: ~3705 righe codice + ~2312 righe test = **6017 righe**  
+**83 test cases pytest, tutti passing ✅**
 
 ---
 
@@ -302,11 +303,19 @@ tests/
 - ✅ Test: 9 test cases, tutti passing ✅
 - ✅ File: tests/test_training_phase4_3_3.py (~200 righe)
 
-### 4.3.4 - Checkpoint e Model Saving
+### ✅ 4.3.4 - Checkpoint e Model Saving [COMPLETATO]
 **Decisioni:**
 - ✅ Metrica: balanced_accuracy
 - ✅ History gestito da checkpoint.save_history()
 - ✅ Stampe centralizzate
+
+**Implementazione:**
+- ✅ Salvataggio automatic history alla fine del training con `checkpoint.save_history()`
+- ✅ Logging info early stopping se triggerato (trigger epoch, best val loss, wait count)
+- ✅ Summary finale con best epoch, best balanced_accuracy, path modello salvato
+- ✅ History salvata in JSON: `checkpoint_history.json` (o `checkpoint_history_fold{k}.json` per K-Fold)
+- ✅ Test: 8 test cases, tutti passing ✅
+- ✅ File: tests/test_training_phase4_3_4.py (~320 righe)
 
 ### 4.3.5 - K-Fold Wrapper
 **Decisioni:**
