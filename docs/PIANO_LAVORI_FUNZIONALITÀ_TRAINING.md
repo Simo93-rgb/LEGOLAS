@@ -317,12 +317,22 @@ tests/
 - ✅ Test: 8 test cases, tutti passing ✅
 - ✅ File: tests/test_training_phase4_3_4.py (~320 righe)
 
-### 4.3.5 - K-Fold Wrapper
+### ✅ 4.3.5 - K-Fold Wrapper [COMPLETATO]
 **Decisioni:**
-- ✅ Ricrea optimizer/scheduler/accelerator per ogni fold
-- ✅ torch.cuda.empty_cache() dopo ogni fold
-- ✅ model.load_state_dict() per "modello vergine" ogni fold
-- ✅ Usa best model del best fold (no ensemble per ora)
+- ✅ Usa KFoldTrainer class (FASE 4.0) invece di logica custom
+- ✅ Conditional routing: if config.use_kfold → KFoldTrainer else → simple training
+- ✅ Model factory per creare modelli freschi per ogni fold
+- ✅ Training function wrapper per chiamare pre_train() per ogni fold
+- ✅ Dataset combinato da X_train + X_val per K-Fold
+
+**Implementazione:**
+- ✅ Import `KFoldTrainer` da `src.training.kfold_trainer`
+- ✅ Conditional routing nella sezione main basato su `config.use_kfold`
+- ✅ Model factory function: gestisce sia GPT2 che BERT-based models
+- ✅ Train function wrapper: setup optimizer/scheduler/dataloader per fold, chiama pre_train()
+- ✅ Aggregazione risultati: mean ± std balanced_accuracy
+- ✅ Backward compatibility: simple training preservato senza modifiche
+- ✅ No test specifici (logica già coperta da 9 test FASE 4.0)
 
 ### 4.3.6 - Data Loading e Split Stratificato
 **Decisioni:**

@@ -28,7 +28,8 @@ from src.training.config import TrainingConfig
 from src.training.checkpoint import ModelCheckpoint
 from src.training.early_stopping import EarlyStopping
 from src.training.focal_loss import create_loss_from_config
-from src.training.utils import compute_class_weights
+from src.training.utils import compute_class_weights, compute_metrics
+from src.training.kfold_trainer import KFoldTrainer
 
 def set_seed(seed):
     torch.manual_seed(seed)
@@ -361,7 +362,6 @@ def pre_train(
         print(f"{'='*60}\n")
 
 
-
 if __name__ == '__main__':
     # Parse CLI arguments
     args = parse_args()
@@ -560,49 +560,144 @@ if __name__ == '__main__':
     
     print(f"   ✅ Loss function configurata!\n")
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate)
+    # ===== CHECK K-FOLD VS SIMPLE TRAINING =====
+    if config.use_kfold:
+        # ========== K-FOLD CROSS VALIDATION ==========
+        print(f"\n{'='*80}")
+        print(f"  🔄 MODALITÀ K-FOLD CROSS VALIDATION")
+        print(f"{'='*80}\n")
+        
+        # Combina X_train + X_val e y_train + y_val per K-Fold
+        combined_texts = X_train + X_val
+        combined_labels = y_train + y_val
+        
+        # Crea dataset combinato
+        combined_dataset = TextDataset(
+            combined_texts,
+            combined_labels,
+            tokenizer,
+            max_len=512
+        )
+        
+        # Model factory per creare modelli freschi
+        def model_factory():
+            """Crea nuovo modello con stessi parametri"""
+            if args.model == 'gpt2':
+                return SimpleGPT2SequenceClassifier(
+                    weights_dir=weights_dir,
+                    num_labels=2,
+                    from_tf=False,
+                    dropout_rate=0.1
+                )
+            else:
+                return LongFormerMultiClassificationHeads(
+                    model_ref=model_ref,
+                    weights_dir=weights_dir,
+                    tokenizer=tokenizer,
+                    device=device,
+                    class_heads=2,
+                    freeze_transformer=False,
+                    model_name=config.model_name
+                )
+        
+        # Training function per KFoldTrainer
+        def train_fold_fn(model, train_dataset, val_dataset, fold, checkpoint, early_stopping, config):
+            """Wrapper di pre_train per KFoldTrainer"""
+            
+            # Crea dataloader
+            train_loader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
+            val_loader = DataLoader(val_dataset, batch_size=config.batch_size, shuffle=False)
+            
+            # Setup optimizer e scheduler
+            optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate)
+            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min')
+            
+            # Prepare con accelerator
+            model, optimizer, train_loader, val_loader, scheduler = accelerator.prepare(
+                model, optimizer, train_loader, val_loader, scheduler
+            )
+            
+            # Training
+            pre_train(
+                model=model,
+                optimizer=optimizer,
+                train_dataloader=train_loader,
+                val_dataloader=val_loader,
+                scheduler=scheduler,
+                criterion=criterion,
+                accelerator=accelerator,
+                config=config,
+                checkpoint=checkpoint,
+                early_stopping=early_stopping,
+                fold=fold
+            )
+            
+            # Ritorna metriche del best model
+            best_info = checkpoint.get_best_info()
+            return {
+                'balanced_accuracy': best_info['best_value'],
+                'best_epoch': best_info['best_epoch']
+            }
+        
+        # Crea KFoldTrainer
+        kfold_trainer = KFoldTrainer(
+            config=config,
+            train_func=train_fold_fn,
+            model_factory=model_factory,
+            dataset=combined_dataset,
+            labels=np.array(combined_labels),
+            verbose=True
+        )
+        
+        # Esegui K-Fold training
+        kfold_results = kfold_trainer.run()
+        
+        print(f"\n✅ K-Fold Training completato!")
+        print(f"   Mean Balanced Accuracy: {kfold_results['mean']['balanced_accuracy']:.4f} ± {kfold_results['std']['balanced_accuracy']:.4f}")
+        
+    else:
+        # ========== SIMPLE TRAINING (NO K-FOLD) ==========
+        optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate)
 
-    startTime = time.time()
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min')
+        startTime = time.time()
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min')
 
-    model, optimizer, train_dataloader, val_dataloader, scheduler = accelerator.prepare(model, optimizer, train_loader, val_loader, scheduler)
-    
-    # ===== CHECKPOINT E EARLY STOPPING =====
-    # Crea ModelCheckpoint (per ora fold=None, training semplice)
-    checkpoint = ModelCheckpoint(
-        save_dir=config.models_dir,
-        fold=None,  # Sarà gestito in 4.3.5 per K-Fold
-        metric='balanced_accuracy',
-        mode='max',
-        model_name=config.model_name,
-        story_format=config.story_format
-    )
-    
-    # Crea EarlyStopping
-    early_stopping = EarlyStopping(
-        patience=config.early_stopping_patience,
-        min_delta=config.early_stopping_min_delta,
-        use_loss_ratio=config.monitor_loss_ratio,
-        loss_ratio_threshold=config.get_loss_ratio_threshold(),
-        loss_ratio_patience=config.loss_ratio_patience,
-        restore_best_weights=config.restore_best_weights
-    )
-    
-    print(f"\n📊 Checkpoint dir: {checkpoint.save_dir}")
-    print(f"📊 Early Stopping: patience={config.early_stopping_patience}, ratio_threshold={config.get_loss_ratio_threshold()}")
-    
-    # ===== TRAINING =====
-    pre_train(
-        model=model,
-        optimizer=optimizer,
-        train_dataloader=train_dataloader,
-        val_dataloader=val_dataloader,
-        scheduler=scheduler,
-        criterion=criterion,
-        accelerator=accelerator,
-        config=config,
-        checkpoint=checkpoint,
-        early_stopping=early_stopping,
-        fold=None  # Training semplice per ora
-    )
+        model, optimizer, train_dataloader, val_dataloader, scheduler = accelerator.prepare(model, optimizer, train_loader, val_loader, scheduler)
+        
+        # ===== CHECKPOINT E EARLY STOPPING =====
+        checkpoint = ModelCheckpoint(
+            save_dir=config.models_dir,
+            fold=None,
+            metric='balanced_accuracy',
+            mode='max',
+            model_name=config.model_name,
+            story_format=config.story_format
+        )
+        
+        early_stopping = EarlyStopping(
+            patience=config.early_stopping_patience,
+            min_delta=config.early_stopping_min_delta,
+            use_loss_ratio=config.monitor_loss_ratio,
+            loss_ratio_threshold=config.get_loss_ratio_threshold(),
+            loss_ratio_patience=config.loss_ratio_patience,
+            restore_best_weights=config.restore_best_weights
+        )
+        
+        print(f"\n📊 Checkpoint dir: {checkpoint.save_dir}")
+        print(f"📊 Early Stopping: patience={config.early_stopping_patience}, ratio_threshold={config.get_loss_ratio_threshold()}")
+        
+        # ===== TRAINING =====
+        pre_train(
+            model=model,
+            optimizer=optimizer,
+            train_dataloader=train_dataloader,
+            val_dataloader=val_dataloader,
+            scheduler=scheduler,
+            criterion=criterion,
+            accelerator=accelerator,
+            config=config,
+            checkpoint=checkpoint,
+            early_stopping=early_stopping,
+            fold=None
+        )
 
