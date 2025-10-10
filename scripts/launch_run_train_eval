@@ -155,7 +155,7 @@ case $kfold_choice in
     2)
         USE_KFOLD="--use_kfold"
         echo ""
-        read -p "Numero di folds [default=10]: " n_folds_input
+        read -p "Numero di folds [default=5]: " n_folds_input
         if [[ "$n_folds_input" =~ ^[0-9]+$ ]] && [ "$n_folds_input" -ge 2 ]; then
             N_FOLDS=$n_folds_input
         fi
@@ -207,13 +207,13 @@ echo ""
 echo -e "${YELLOW}Configurazione Training:${NC}"
 read -p "Numero epoche [default=10]: " epochs
 read -p "Patience early stopping [default=5]: " patience
-read -p "Batch size [default=256]: " batch_size
+read -p "Batch size [default=16]: " batch_size
 read -p "Learning rate [default=1e-5]: " lr
 
 # Defaults
-EPOCHS=${epochs:-10}
+EPOCHS=${epochs:-5}
 PATIENCE=${patience:-5}
-BATCH_SIZE=${batch_size:-256}
+BATCH_SIZE=${batch_size:-16}
 LR=${lr:-1e-5}
 
 echo ""

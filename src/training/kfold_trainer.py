@@ -179,7 +179,7 @@ class KFoldTrainer:
                 self.fold_models.append(checkpoint.best_path)
             
             # Salva metriche fold
-            fold_metrics_path = self.config.reports_dir / f"fold_{fold_idx}_metrics.json"
+            fold_metrics_path = self.config.reports_dir / f"fold_{fold_idx}_{self.config.story_format}_{self.config.model_name}_metrics.json"
             save_metrics(fold_metrics, fold_metrics_path)
             
             if self.verbose:
@@ -192,7 +192,7 @@ class KFoldTrainer:
         aggregated = self._aggregate_results()
         
         # Salva risultati aggregati
-        aggregated_path = self.config.reports_dir / "kfold_aggregated_results.json"
+        aggregated_path = self.config.reports_dir / f"kfold_aggregated_{self.config.story_format}_{self.config.model_name}_results.json"
         save_metrics(aggregated, aggregated_path)
         
         if self.verbose:
