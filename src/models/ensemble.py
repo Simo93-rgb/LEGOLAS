@@ -79,13 +79,27 @@ class EnsembleModel:
             models_dir=self.models_dir
         )
         
-        # Load metrics for all folds
-        self.fold_metrics = EnsembleModel.load_fold_metrics(
-            story_format=self.story_format,
-            model_name=self.model_name,
-            n_folds=len(self.model_paths),
-            metrics_dir=self.metrics_dir
-        )
+        # Try to load metrics for all folds (optional for ensemble)
+        try:
+            self.fold_metrics = EnsembleModel.load_fold_metrics(
+                story_format=self.story_format,
+                model_name=self.model_name,
+                n_folds=len(self.model_paths),
+                metrics_dir=self.metrics_dir
+            )
+        except FileNotFoundError as e:
+            print(f"⚠️  Metrics JSON not found: {e}")
+            print(f"   Creating placeholder metrics (ensemble uses all folds anyway)")
+            # Create placeholder metrics with unknown accuracy
+            self.fold_metrics = []
+            for i in range(len(self.model_paths)):
+                self.fold_metrics.append({
+                    'metric': 'balanced_accuracy',
+                    'mode': 'max',
+                    'best_value': 0.0,  # Unknown
+                    'best_epoch': 0,
+                    'fold': i
+                })
         
         # Load all models
         self.models: List[nn.Module] = []
@@ -381,3 +395,92 @@ class EnsembleModel:
             return ensemble_probs, all_probs
         else:
             return ensemble_probs
+    
+    def compute_ensemble_attributions(
+        self,
+        input_ids: torch.Tensor,
+        attention_mask: torch.Tensor,
+        target_class: int,
+        n_steps: int = 50,
+        internal_batch_size: int = 32
+    ) -> torch.Tensor:
+        """
+        Compute Ensemble Integrated Gradients: calcola IG per ogni fold, poi media
+        
+        Strategy (from docs/XAI.md):
+        1. Per ogni fold model: compute Integrated Gradients
+        2. Average attributions across folds: mean(attributions, axis=0)
+        
+        Args:
+            input_ids: Input token IDs (1, seq_len) - SINGLE SAMPLE
+            attention_mask: Attention mask (1, seq_len)
+            target_class: Target class index for attribution
+            n_steps: Number of IG interpolation steps (default: 50)
+            internal_batch_size: Batch size for IG steps (default: 32)
+            
+        Returns:
+            Averaged attributions: (seq_len,) - IG scores per token
+            
+        Example:
+            >>> ensemble = EnsembleModel(...)
+            >>> input_ids = tokenizer(text, return_tensors='pt')['input_ids']
+            >>> attention_mask = tokenizer(text, return_tensors='pt')['attention_mask']
+            >>> attributions = ensemble.compute_ensemble_attributions(
+            ...     input_ids, attention_mask, target_class=1, n_steps=50
+            ... )
+            >>> print(f"Attribution shape: {attributions.shape}")  # (seq_len,)
+        """
+        from captum.attr import IntegratedGradients
+        
+        # Ensure single sample
+        assert input_ids.size(0) == 1, "compute_ensemble_attributions supports SINGLE sample only"
+        
+        # Sposta input su device
+        input_ids = input_ids.to(self.device)
+        attention_mask = attention_mask.to(self.device)
+        
+        # Collect attributions da tutti i fold
+        all_attributions = []
+        
+        for fold_idx, model in enumerate(self.models):
+            # Set model to eval mode
+            model.eval()
+            
+            # Define forward function for IG
+            def forward_func(input_embeds, attention_mask_param=attention_mask):
+                # Forward pass con embeddings
+                outputs = model.longformer(
+                    inputs_embeds=input_embeds,
+                    attention_mask=attention_mask_param
+                )
+                # Get logits usando pooler_output
+                logits = model.output_layer(outputs.pooler_output)
+                return logits
+            
+            # Get input embeddings
+            embeddings = model.longformer.embeddings.word_embeddings(input_ids)
+            
+            # Initialize IntegratedGradients
+            ig = IntegratedGradients(forward_func)
+            
+            # Compute attributions per questo fold
+            attributions = ig.attribute(
+                embeddings,
+                target=target_class,
+                n_steps=n_steps,
+                internal_batch_size=internal_batch_size
+            )
+            
+            # Sum across embedding dimension: (1, seq_len, hidden_dim) -> (1, seq_len)
+            attributions_summed = attributions.sum(dim=-1)
+            
+            # Append: (seq_len,)
+            all_attributions.append(attributions_summed.squeeze(0))
+        
+        # Stack: (k_folds, seq_len)
+        all_attributions = torch.stack(all_attributions, dim=0)
+        
+        # Average ensemble attributions: (seq_len,)
+        ensemble_attributions = torch.mean(all_attributions, dim=0)
+        
+        return ensemble_attributions

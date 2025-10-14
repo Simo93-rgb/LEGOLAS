@@ -124,10 +124,22 @@ def load_model_for_eval(
         vocab_size = state_dict['longformer.embeddings.word_embeddings.weight'].shape[0]
         
         # Conta i layer dell'encoder per dedurre num_hidden_layers
-        num_layers = len([k for k in state_dict.keys() if k.startswith('longformer.encoder.layer.')])
         num_hidden_layers = len(set([k.split('.')[3] for k in state_dict.keys() if k.startswith('longformer.encoder.layer.')]))
         
-        print(f"   Deduced config: hidden_size={hidden_size}, vocab_size={vocab_size}, layers={num_hidden_layers}")
+        # Deduce num_attention_heads dalla shape delle query/key/value
+        # longformer.encoder.layer.0.attention.self.query.weight ha shape [hidden_size, hidden_size]
+        # e il modello ha num_attention_heads teste, quindi hidden_size / num_attention_heads = head_size
+        # Per BERT standard: base=12 heads, large=16 heads
+        # Possiamo dedurlo: se hidden_size=768 -> 12 heads, se 1024 -> 16 heads
+        if hidden_size == 768:
+            num_attention_heads = 12
+        elif hidden_size == 1024:
+            num_attention_heads = 16
+        else:
+            # Fallback: assume 12
+            num_attention_heads = 12
+        
+        print(f"   Deduced config: hidden_size={hidden_size}, vocab_size={vocab_size}, layers={num_hidden_layers}, heads={num_attention_heads}")
         
         # Crea config manualmente
         from transformers import BertConfig
@@ -135,7 +147,7 @@ def load_model_for_eval(
             vocab_size=vocab_size,
             hidden_size=hidden_size,
             num_hidden_layers=num_hidden_layers,
-            num_attention_heads=12,  # Standard per BERT-base
+            num_attention_heads=num_attention_heads,
             intermediate_size=hidden_size * 4,  # Standard ratio
             max_position_embeddings=512,
         )
@@ -162,8 +174,12 @@ def load_model_for_eval(
         
         # Info ensemble
         best_fold = EnsembleModel.get_best_fold(ensemble.fold_metrics)
+        best_value = ensemble.fold_metrics[best_fold]['best_value']
         print(f"   Ensemble: {len(ensemble.models)} folds")
-        print(f"   Best fold: {best_fold} (accuracy: {ensemble.fold_metrics[best_fold]['best_value']:.4f})")
+        if best_value > 0.0:
+            print(f"   Best fold: {best_fold} (accuracy: {best_value:.4f})")
+        else:
+            print(f"   Best fold: unknown (metrics not available)")
         
         return ensemble, True, hf_model_id
         
@@ -171,19 +187,28 @@ def load_model_for_eval(
         # Load solo best fold
         print(f"\n📥 Loading best fold model...")
         
-        # Load metrics e trova best
-        fold_metrics = EnsembleModel.load_fold_metrics(
-            story_format=story_format,
-            model_name=model_name,
-            n_folds=len(model_paths),
-            metrics_dir=metrics_dir
-        )
+        # Load metrics e trova best (required for single fold mode)
+        try:
+            fold_metrics = EnsembleModel.load_fold_metrics(
+                story_format=story_format,
+                model_name=model_name,
+                n_folds=len(model_paths),
+                metrics_dir=metrics_dir
+            )
+            best_fold = EnsembleModel.get_best_fold(fold_metrics)
+        except FileNotFoundError as e:
+            print(f"⚠️  Metrics not found: {e}")
+            print(f"   Using fold 0 as default (metrics required to identify best fold)")
+            best_fold = 0
+            fold_metrics = [{'best_value': 0.0, 'best_epoch': 0, 'fold': i} for i in range(len(model_paths))]
         
-        best_fold = EnsembleModel.get_best_fold(fold_metrics)
         best_model_path = model_paths[best_fold]
         
         print(f"   Best fold: {best_fold}")
-        print(f"   Accuracy: {fold_metrics[best_fold]['best_value']:.4f}")
+        if fold_metrics[best_fold]['best_value'] > 0.0:
+            print(f"   Accuracy: {fold_metrics[best_fold]['best_value']:.4f}")
+        else:
+            print(f"   Accuracy: unknown")
         print(f"   Model: {best_model_path.name}")
         
         # Load model
@@ -205,195 +230,196 @@ def load_model_for_eval(
 
 
 # ============================================================
-# CONFIGURAZIONE EVAL
+# MAIN EXECUTION
 # ============================================================
 
-# Parse CLI arguments
-parser = argparse.ArgumentParser(description='LEGOLAS - Model Evaluation')
-parser.add_argument('--story_format', type=str, default='narrativo',
-                    help='Story format (default: narrativo)')
-parser.add_argument('--model_name', type=str, default='bert-base-uncased',
-                    help='Model name (default: bert-base-uncased)')
-parser.add_argument('--use_ensemble', action='store_true',
-                    help='Use K-Fold ensemble instead of best fold only')
-args = parser.parse_args()
-
-STORY_FORMAT = args.story_format
-model_name = args.model_name
-USE_ENSEMBLE = args.use_ensemble
-
-print(f"\n{'='*60}")
-print(f"  LEGOLAS - Evaluation Modello XES")
-print(f"  Formato: {STORY_FORMAT}")
-print(f"  Modello: {model_name}")
-print(f"  Mode: {'K-Fold Ensemble' if USE_ENSEMBLE else 'Best Fold Only'}")
-print(f"{'='*60}\n")
-
-# Carica configurazioni modelli da YAML
-print(f'📋 Caricamento configurazioni modelli da YAML...')
-try:
-    config_loader = ModelConfigLoader()
-    available_models = config_loader.list_model_ids()
-    print(f'✅ {len(available_models)} modelli caricati')
+if __name__ == '__main__':
+    # Parse CLI arguments
+    parser = argparse.ArgumentParser(description='LEGOLAS - Model Evaluation')
+    parser.add_argument('--story_format', type=str, default='narrativo',
+                        help='Story format (default: narrativo)')
+    parser.add_argument('--model_name', type=str, default='bert-base-uncased',
+                        help='Model name (default: bert-base-uncased)')
+    parser.add_argument('--use_ensemble', action='store_true',
+                        help='Use K-Fold ensemble instead of best fold only')
+    args = parser.parse_args()
     
-except FileNotFoundError as e:
-    print(f'⚠️  Config YAML non trovato: {e}')
-    print(f'   Evaluation richiede config YAML per identificare modelli')
-    exit(1)
-
-# Verifica che il modello richiesto esista
-model_config = config_loader.get_model(model_name)
-if not model_config:
-    print(f'❌ Modello non trovato: {model_name}')
-    print(f'   Modelli disponibili:')
-    for model_id in available_models:
-        m = config_loader.get_model(model_id)
-        print(f'      • {model_id}: {m.description}')
-    exit(1)
-
-print(f'\n🤖 Modello selezionato: {model_name}')
-print(f'   HuggingFace ID: {model_config.hf_model_id}')
-print(f'   Tipo: {model_config.type}')
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-# Assicura che le directory esistano
-ensure_directories()
-
-# Carica storie dal formato specificato
-print(f"\n📖 Caricamento storie formato '{STORY_FORMAT}'...")
-
-test_path = get_story_file_path(STORY_FORMAT, 'test')
-with open(test_path, 'rb') as f:
-    test = pickle.load(f)
-print(f"   ✅ Test stories: {len(test)} campioni")
-
-label_train_path = get_story_file_path(STORY_FORMAT, 'label_train')
-with open(label_train_path, 'rb') as f:
-    label_train = pickle.load(f)
-
-label_test_path = get_story_file_path(STORY_FORMAT, 'label_test')
-with open(label_test_path, 'rb') as f:
-    label_test = pickle.load(f)
-
-label2id = {}
-id2label = {}
-i = 0
-for l in list(np.unique(label_train)):
-    label2id[l] = i
-    id2label[i] = l
-    i = i + 1
-
-label_test_int = []
-for l in label_test:
-    label_test_int.append(label2id[l])
-
-# Determine num_classes
-num_classes = len(label2id)
-
-# Load model using helper function (estrae HF model ID dai checkpoint)
-test_model, is_ensemble, hf_model_id = load_model_for_eval(
-    story_format=STORY_FORMAT,
-    model_name=model_name,
-    num_classes=num_classes,
-    device=device,
-    use_ensemble=USE_ENSEMBLE
-)
-
-# Load tokenizer usando HF model ID estratto dai checkpoint
-print(f"\n📝 Loading tokenizer: {hf_model_id}")
-tokenizer = AutoTokenizer.from_pretrained(hf_model_id, truncation_side='left')
-
-
-test_dataset = TextDataset(test, label_test_int, tokenizer, 512)
-test_loader = DataLoader(test_dataset, batch_size=256, shuffle=False)
-
-# Set model to eval mode (no-op for ensemble, but consistent API)
-if not is_ensemble:
-    test_model.eval()
-
-all_targets = []
-all_predictions = []
-pred_prob = []
-
-with torch.no_grad():
-    for batch in test_loader:
-        input_ids = batch['input_ids'].to(device)
-        attention_mask = batch['attention_mask'].to(device)
+    STORY_FORMAT = args.story_format
+    model_name = args.model_name
+    USE_ENSEMBLE = args.use_ensemble
+    
+    print(f"\n{'='*60}")
+    print(f"  LEGOLAS - Evaluation Modello XES")
+    print(f"  Formato: {STORY_FORMAT}")
+    print(f"  Modello: {model_name}")
+    print(f"  Mode: {'K-Fold Ensemble' if USE_ENSEMBLE else 'Best Fold Only'}")
+    print(f"{'='*60}\n")
+    
+    # Carica configurazioni modelli da YAML
+    print(f'📋 Caricamento configurazioni modelli da YAML...')
+    try:
+        config_loader = ModelConfigLoader()
+        available_models = config_loader.list_model_ids()
+        print(f'✅ {len(available_models)} modelli caricati')
         
-        # Handle ensemble vs regular model
-        if is_ensemble:
-            # EnsembleModel uses .predict() method
-            output = test_model.predict(input_ids, attention_mask)
-        else:
-            # Regular model uses direct call
-            output = test_model(input_ids, attention_mask)
-        
-        pred_prob.append(output.cpu())
-        predicted = output.argmax(dim=1)
-        all_targets.extend(batch['labels'].to('cpu').numpy())
-        all_predictions.extend(predicted.to('cpu').numpy())
-
-all_targets = [int(x) for x in all_targets]
-all_predictions = [int(x) for x in all_predictions]
-
-# Assicura che prediction directory esista
-ensure_directories()
-
-# Prefix per nomi file risultati (include ensemble info)
-ensemble_suffix = '_ensemble' if USE_ENSEMBLE else ''
-result_prefix = f'{STORY_FORMAT}_{model_name}{ensemble_suffix}'
-
-print(f"\n💾 Salvataggio risultati...")
-
-# Costruisci path manualmente per supportare suffisso ensemble
-if USE_ENSEMBLE:
-    prob_path = PREDICTION_DIR / f'{result_prefix}_prob.pkl'
-    target_path = PREDICTION_DIR / f'{result_prefix}_all_target.pkl'
-    prediction_path = PREDICTION_DIR / f'{result_prefix}_all_prediction.pkl'
-    report_path = PREDICTION_DIR / f'{result_prefix}_report.txt'
-else:
-    # Usa helper per consistency
-    prob_path = get_prediction_path(STORY_FORMAT, model_name, 'prob')
-    target_path = get_prediction_path(STORY_FORMAT, model_name, 'all_target')
-    prediction_path = get_prediction_path(STORY_FORMAT, model_name, 'all_prediction')
-    report_path = get_prediction_path(STORY_FORMAT, model_name, 'report')
-
-# Salva predictions
-with open(prob_path, 'wb') as file:
-    pickle.dump(pred_prob, file)
-
-with open(target_path, 'wb') as file:
-    pickle.dump(all_targets, file)
-
-with open(prediction_path, 'wb') as file:
-    pickle.dump(all_predictions, file)
-
-print(f"\n{'='*60}")
-print("  CLASSIFICATION REPORT")
-print(f"{'='*60}\n")
-
-report = classification_report(all_targets, all_predictions, output_dict=False, digits=4)
-print(report)
-
-# Salva report
-result = open(report_path, 'w')
-result.write(f"Formato Storie: {STORY_FORMAT}\n")
-result.write(f"Modello: {model_name}\n")
-if USE_ENSEMBLE:
-    result.write(f"Mode: K-Fold Ensemble\n")
-result.write(f"{'='*60}\n\n")
-result.write(report)
-result.write('\n\n')
-
-print(f"\n{'='*60}")
-print("  CONFUSION MATRIX")
-print(f"{'='*60}\n")
-
-conf_m = confusion_matrix(all_targets, all_predictions)
-print(conf_m)
-result.write(str(conf_m))
-result.close()
-
-print(f"\n✅ Risultati salvati in: {PREDICTION_DIR / result_prefix}_*")
-print(f"\n{'='*60}")
+    except FileNotFoundError as e:
+        print(f'⚠️  Config YAML non trovato: {e}')
+        print(f'   Evaluation richiede config YAML per identificare modelli')
+        exit(1)
+    
+    # Verifica che il modello richiesto esista
+    model_config = config_loader.get_model(model_name)
+    if not model_config:
+        print(f'❌ Modello non trovato: {model_name}')
+        print(f'   Modelli disponibili:')
+        for model_id in available_models:
+            m = config_loader.get_model(model_id)
+            print(f'      • {model_id}: {m.description}')
+        exit(1)
+    
+    print(f'\n🤖 Modello selezionato: {model_name}')
+    print(f'   HuggingFace ID: {model_config.hf_model_id}')
+    print(f'   Tipo: {model_config.type}')
+    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    # Assicura che le directory esistano
+    ensure_directories()
+    
+    # Carica storie dal formato specificato
+    print(f"\n📖 Caricamento storie formato '{STORY_FORMAT}'...")
+    
+    test_path = get_story_file_path(STORY_FORMAT, 'test')
+    with open(test_path, 'rb') as f:
+        test = pickle.load(f)
+    print(f"   ✅ Test stories: {len(test)} campioni")
+    
+    label_train_path = get_story_file_path(STORY_FORMAT, 'label_train')
+    with open(label_train_path, 'rb') as f:
+        label_train = pickle.load(f)
+    
+    label_test_path = get_story_file_path(STORY_FORMAT, 'label_test')
+    with open(label_test_path, 'rb') as f:
+        label_test = pickle.load(f)
+    
+    label2id = {}
+    id2label = {}
+    i = 0
+    for l in list(np.unique(label_train)):
+        label2id[l] = i
+        id2label[i] = l
+        i = i + 1
+    
+    label_test_int = []
+    for l in label_test:
+        label_test_int.append(label2id[l])
+    
+    # Determine num_classes
+    num_classes = len(label2id)
+    
+    # Load model using helper function (estrae HF model ID dai checkpoint)
+    test_model, is_ensemble, hf_model_id = load_model_for_eval(
+        story_format=STORY_FORMAT,
+        model_name=model_name,
+        num_classes=num_classes,
+        device=device,
+        use_ensemble=USE_ENSEMBLE
+    )
+    
+    # Load tokenizer usando HF model ID estratto dai checkpoint
+    print(f"\n📝 Loading tokenizer: {hf_model_id}")
+    tokenizer = AutoTokenizer.from_pretrained(hf_model_id, truncation_side='left')
+    
+    
+    test_dataset = TextDataset(test, label_test_int, tokenizer, 512)
+    test_loader = DataLoader(test_dataset, batch_size=128, shuffle=False)
+    
+    # Set model to eval mode (no-op for ensemble, but consistent API)
+    if not is_ensemble:
+        test_model.eval()
+    
+    all_targets = []
+    all_predictions = []
+    pred_prob = []
+    
+    with torch.no_grad():
+        for batch in test_loader:
+            input_ids = batch['input_ids'].to(device)
+            attention_mask = batch['attention_mask'].to(device)
+            
+            # Handle ensemble vs regular model
+            if is_ensemble:
+                # EnsembleModel uses .predict() method
+                output = test_model.predict(input_ids, attention_mask)
+            else:
+                # Regular model uses direct call
+                output = test_model(input_ids, attention_mask)
+            
+            pred_prob.append(output.cpu())
+            predicted = output.argmax(dim=1)
+            all_targets.extend(batch['labels'].to('cpu').numpy())
+            all_predictions.extend(predicted.to('cpu').numpy())
+    
+    all_targets = [int(x) for x in all_targets]
+    all_predictions = [int(x) for x in all_predictions]
+    
+    # Assicura che prediction directory esista
+    ensure_directories()
+    
+    # Prefix per nomi file risultati (include ensemble info)
+    ensemble_suffix = '_ensemble' if USE_ENSEMBLE else ''
+    result_prefix = f'{STORY_FORMAT}_{model_name}{ensemble_suffix}'
+    
+    print(f"\n💾 Salvataggio risultati...")
+    
+    # Costruisci path manualmente per supportare suffisso ensemble
+    if USE_ENSEMBLE:
+        prob_path = PREDICTION_DIR / f'{result_prefix}_prob.pkl'
+        target_path = PREDICTION_DIR / f'{result_prefix}_all_target.pkl'
+        prediction_path = PREDICTION_DIR / f'{result_prefix}_all_prediction.pkl'
+        report_path = PREDICTION_DIR / f'{result_prefix}_report.txt'
+    else:
+        # Usa helper per consistency
+        prob_path = get_prediction_path(STORY_FORMAT, model_name, 'prob')
+        target_path = get_prediction_path(STORY_FORMAT, model_name, 'all_target')
+        prediction_path = get_prediction_path(STORY_FORMAT, model_name, 'all_prediction')
+        report_path = get_prediction_path(STORY_FORMAT, model_name, 'report')
+    
+    # Salva predictions
+    with open(prob_path, 'wb') as file:
+        pickle.dump(pred_prob, file)
+    
+    with open(target_path, 'wb') as file:
+        pickle.dump(all_targets, file)
+    
+    with open(prediction_path, 'wb') as file:
+        pickle.dump(all_predictions, file)
+    
+    print(f"\n{'='*60}")
+    print("  CLASSIFICATION REPORT")
+    print(f"{'='*60}\n")
+    
+    report = classification_report(all_targets, all_predictions, output_dict=False, digits=4)
+    print(report)
+    
+    # Salva report
+    result = open(report_path, 'w')
+    result.write(f"Formato Storie: {STORY_FORMAT}\n")
+    result.write(f"Modello: {model_name}\n")
+    if USE_ENSEMBLE:
+        result.write(f"Mode: K-Fold Ensemble\n")
+    result.write(f"{'='*60}\n\n")
+    result.write(report)
+    result.write('\n\n')
+    
+    print(f"\n{'='*60}")
+    print("  CONFUSION MATRIX")
+    print(f"{'='*60}\n")
+    
+    conf_m = confusion_matrix(all_targets, all_predictions)
+    print(conf_m)
+    result.write(str(conf_m))
+    result.close()
+    
+    print(f"\n✅ Risultati salvati in: {PREDICTION_DIR / result_prefix}_*")
+    print(f"\n{'='*60}")

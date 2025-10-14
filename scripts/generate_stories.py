@@ -15,8 +15,8 @@ from pathlib import Path
 from typing import List, Tuple
 import pandas as pd
 
-from xes_parser import XESParser
-from story_generator import StoryGenerator
+from src.data.xes_parser import XESParser
+from src.generation.story_generator import StoryGenerator
 from utils.types import PatientStory, PatientTrace
 
 
@@ -88,12 +88,6 @@ def generate_stories_from_csv(csv_file: str) -> Tuple[List[str], List[int]]:
     print(f"📖 Caricamento file CSV: {csv_file}")
     print("⚠️  Pipeline CSV originale non ancora completamente integrata.")
     print("   Usa la funzione history_conversion da main.py per ora.")
-    
-    # Importa la funzione originale
-    from main import history_conversion
-    
-    csv_log = pd.read_csv(csv_file)
-    # ... (logica di preprocessing dal main.py originale)
     
     raise NotImplementedError(
         "Pipeline CSV non ancora completamente integrata. "
