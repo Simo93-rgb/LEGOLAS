@@ -1,6 +1,6 @@
 import pickle
 # Leggi actions
-with open('output/explainability/actions_narrativo_bert-base-uncased_20251007_144056.pkl', 'rb') as f:
+with open('/home/simon/GitHub/LEGOLAS/output/stories/narrativo_label_test.pkl', 'rb') as f:
     actions = pickle.load(f)
 
 print('Actions structure:')

@@ -55,8 +55,9 @@ echo "   6) medbert-base            - MedBERT Base"
 echo "   7) scibert-base            - SciBERT Base"
 echo "   8) clinical-longformer     - Clinical Longformer"
 echo "   9) bert-base-uncased       - BERT Base"
+echo "   10) bert-large-uncased     - BERT Large"
 echo ""
-read -p "Select model [1-9] (default: 1): " MODEL_CHOICE
+read -p "Select model [1-10] (default: 1): " MODEL_CHOICE
 MODEL_CHOICE=${MODEL_CHOICE:-1}
 
 case $MODEL_CHOICE in
@@ -69,9 +70,10 @@ case $MODEL_CHOICE in
     7) MODEL_NAME="scibert-base" ;;
     8) MODEL_NAME="clinical-longformer" ;;
     9) MODEL_NAME="bert-base-uncased" ;;
+    10) MODEL_NAME="bert-large-uncased" ;;
     *) 
-        echo -e "${RED}Invalid choice, using clinical-bert${NC}"
-        MODEL_NAME="clinical-bert"
+        echo -e "${RED}Invalid choice, using bert-base-uncased${NC}"
+        MODEL_NAME="bert-base-uncased"
         ;;
 esac
 
@@ -93,7 +95,7 @@ echo -e "${GREEN}✓ Configuration complete${NC}"
 echo ""
 
 # 4. Build command
-CMD="python -m src.explainability.extract_explainability"
+CMD="uv run python -m src.explainability.extract_explainability"
 CMD="$CMD --model $MODEL_NAME"
 CMD="$CMD --format $STORY_FORMAT"
 CMD="$CMD --top_k $TOP_K"

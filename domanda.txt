@@ -1,0 +1,30 @@
+Risposta domande:
+1. i modelli sono salvati in output/models con il formato best_model_{format}_{model}_fold{k}.pth quindi un esempio potrebbe essere: 
+best_model_narrativo_bert-base-uncased_fold0.pth
+best_model_narrativo_bert-base-uncased_fold1.pth
+best_model_narrativo_bert-base-uncased_fold2.pth
+best_model_narrativo_bert-base-uncased_fold3.pth
+best_model_narrativo_bert-base-uncased_fold4.pth
+
+Eseguendo il comando "ls output/models/ | grep fold | grep .pth" otterrai la lista completa. 
+
+2. segui questo piano:
+
+Per la Predizione:
+✅ Fai la media delle probabilità (output della softmax) calcolate da ciascuno dei k modelli.
+
+Per la XAI (con Integrated Gradients):
+❌ NON fare la media dei pesi dei modelli (state_dict) per creare un modello virtuale.
+✅ Calcola gli IG scores per ogni modello singolarmente e poi fai la media dei punteggi di attribuzione risultanti.
+
+3. Forse un refuso, se dobbiamo fare ensemble perché cercare il best fold? Se serve per la doppia modalità allora andrebbe preso il modello con best balanced_accuracy. Qui abbiamo un problema, al momento per colpa di un bug 
+
+4. Non sono pensati per ensemble e la cosa migliore sarebbe avere una funzione helper che non tocchi la logica di quei file. 
+
+5. Usa un modello vero ma con un tiny dataset che però deve essere una estrazione di quello vero. Ricordo che sono in formato pickle. 
+ls output/stories/
+bullet_label_test.pkl   bullet_test.pkl   clinical_label_test.pkl   clinical_test.pkl   narrativo_label_test.pkl   narrativo_test.pkl
+bullet_label_train.pkl  bullet_train.pkl  clinical_label_train.pkl  clinical_train.pkl  narrativo_label_train.pkl  narrativo_train.pkl
+
+Commento Proposta:
+In generale è ok ma va aggiornata con le mie riposte. 

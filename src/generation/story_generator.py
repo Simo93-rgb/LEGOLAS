@@ -14,7 +14,7 @@ import os
 import logging
 
 from utils.types import PatientTrace, Event, PatientStory, ClassificationTarget
-from data.clinical_token_mapper import ClinicalTokenMapper
+from src.data.clinical_token_mapper import ClinicalTokenMapper
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +41,10 @@ class StoryGenerator:
         # Carica translation cache per mappatura italiano→inglese
         self.translation_cache = self._load_translation_cache()
         
+        if not self.translation_cache or not self.medical_vocabulary or not self.activity_mapping:
+            print("⚠️  Attenzione: Mancano dati di traduzione o vocabolario medico!")
+            raise ValueError("Dati di traduzione o vocabolario medico non caricati correttamente.")
+
         # NUOVO: Inizializza clinical token mapper se abilitato
         self.clinical_mapper: Optional[ClinicalTokenMapper] = None
         if self.enable_clinical_tokens:
@@ -63,12 +67,8 @@ class StoryGenerator:
 
     def _load_berting_vocabulary(self) -> Dict[str, str]:
         """Carica il dizionario delle traduzioni IT->EN dalla cartella data."""
-        # Cerca prima nella directory principale del progetto
-        translation_path = Path(__file__).parent / "translation_cache.json"
-        
-        # Se non trovato, prova nella sottocartella data
-        if not translation_path.exists():
-            translation_path = Path(__file__).parent / "data" / "translation_cache.json"
+        # Path corretto: src/generation/ -> radice progetto -> data/translation_cache.json
+        translation_path = Path(__file__).parent.parent.parent / "data" / "translation_cache.json"
         
         if not translation_path.exists():
             print(f"⚠️  Dizionario traduzioni non trovato: {translation_path}")
@@ -123,17 +123,13 @@ class StoryGenerator:
                 return english_value
                 
         # Se non trovato, restituisce l'originale con warning
-        print(f"⚠️  Traduzione non trovata per: '{activity}'")
+        # print(f"⚠️  Traduzione non trovata per: '{activity}'")
         return activity
     
     def _load_translation_cache(self) -> Dict[str, str]:
         """Load translation cache for direct Italian→English mapping."""
-        # Cerca prima nella directory principale del progetto
-        cache_path = Path(__file__).parent / "translation_cache.json"
-        
-        # Se non trovato, prova nella sottocartella data
-        if not cache_path.exists():
-            cache_path = Path(__file__).parent / "data" / "translation_cache.json"
+        # Path corretto: src/generation/ -> radice progetto -> data/translation_cache.json
+        cache_path = Path(__file__).parent.parent.parent / "data" / "translation_cache.json"
         
         if not cache_path.exists():
             print(f"⚠️  Translation cache not found: {cache_path}")
@@ -445,7 +441,7 @@ class StoryGenerator:
             
         # Sort events by timestamp
         sorted_events = sorted(trace.events, key=lambda x: x.timestamp)
-        start_time = sorted_events[0].timestamp
+        # start_time = sorted_events[0].timestamp  # non usato per delta relativo
         
         # Group events by timestamp
         event_groups = self._group_simultaneous_events(sorted_events)
@@ -453,8 +449,11 @@ class StoryGenerator:
         # Create narrative in bullet points format
         narrative_lines = []
         
-        for group in event_groups:
-            time_seconds = int((group[0].timestamp - start_time).total_seconds())
+        # Delta temporale relativo al gruppo precedente
+        prev_time = event_groups[0][0].timestamp
+        
+        for idx, group in enumerate(event_groups):
+            time_seconds = 0 if idx == 0 else int((group[0].timestamp - prev_time).total_seconds())
             
             if len(group) == 1:
                 # Single event
@@ -475,6 +474,9 @@ class StoryGenerator:
                     else:
                         # Subsequent actions with "(concurrent)"
                         narrative_lines.append(f"    - {activity_desc} (concurrent)")
+            
+            # Aggiorna tempo precedente al primo evento del gruppo corrente
+            prev_time = group[0].timestamp
         
         return "\n".join(narrative_lines)
 
@@ -494,7 +496,7 @@ class StoryGenerator:
             
         # Sort events by timestamp
         sorted_events = sorted(trace.events, key=lambda x: x.timestamp)
-        start_time = sorted_events[0].timestamp
+        # start_time = sorted_events[0].timestamp  # non usato per delta relativo
         
         # Group events by timestamp
         event_groups = self._group_simultaneous_events(sorted_events)
@@ -502,8 +504,11 @@ class StoryGenerator:
         # Create discursive narrative
         narrative_paragraphs = []
         
-        for group in event_groups:
-            time_seconds = int((group[0].timestamp - start_time).total_seconds())
+        # Delta temporale relativo al gruppo precedente
+        prev_time = event_groups[0][0].timestamp
+        
+        for idx, group in enumerate(event_groups):
+            time_seconds = 0 if idx == 0 else int((group[0].timestamp - prev_time).total_seconds())
             
             if len(group) == 1:
                 # Single event
@@ -513,7 +518,7 @@ class StoryGenerator:
                     # First event
                     paragraph = f"The {activity_desc} was performed at the beginning of hospitalization, after 0 seconds."
                 else:
-                    # Other single events
+                    # Other single events (delta rispetto al precedente)
                     time_formatted = f"{time_seconds:,}"
                     paragraph = f"After {time_formatted} seconds, {activity_desc} was performed."
                     
@@ -541,6 +546,9 @@ class StoryGenerator:
                     paragraph = f"After {time_formatted} seconds, {activities_text} was performed."
                     
                 narrative_paragraphs.append(paragraph)
+            
+            # Aggiorna tempo precedente al primo evento del gruppo corrente
+            prev_time = group[0].timestamp
         
         return "\n\n".join(narrative_paragraphs)
 
