@@ -44,6 +44,7 @@ dependencies = [
     "langchain-chroma>=0.2.2",
     "langchain-ollama>=0.3.7",
     "umap-learn>=0.5.9.post2",
+    "rustxes>=0.2.10",
 ]
 
  [project.optional-dependencies]

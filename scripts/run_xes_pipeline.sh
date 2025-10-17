@@ -12,7 +12,7 @@ echo -e "${BLUE}   LEGOLAS - Pipeline XES Story Generation${NC}"
 echo -e "${BLUE}════════════════════════════════════════════════════════${NC}\n"
 
 # File XES di input
-XES_FILE="ALL_20DRG_2022_2023_CLASS_Duration_ricovero_dimissioni_LAST_17Jan2025.xes"
+XES_FILE="data/raw/ALL_20DRG_2022_2023_CLASS_Duration_ricovero_dimissioni_LAST_17Jan2025.xes"
 
 # Verifica che il file esista
 if [ ! -f "$XES_FILE" ]; then
@@ -26,12 +26,12 @@ echo -e "${GREEN}✅ File XES trovato: $XES_FILE${NC}\n"
 # Scenario 1: Formato narrativo (raccomandato per BERT)
 echo -e "${BLUE}📝 Scenario 1: Generazione formato NARRATIVO${NC}"
 echo "   (Raccomandato per modelli BERT-like)"
-python generate_stories.py \
+uv run python scripts/generate_stories.py \
     --pipeline xes \
     --input "$XES_FILE" \
     --output-prefix narrativo \
     --format narrative \
-    --test-size 0.34 \
+    --test-size 0.15 \
     --seed 42
 
 if [ $? -eq 0 ]; then
@@ -44,12 +44,12 @@ fi
 # Scenario 2: Formato bullet points
 echo -e "${BLUE}📝 Scenario 2: Generazione formato BULLET POINTS${NC}"
 echo "   (Alternativa più compatta)"
-python generate_stories.py \
+uv run python scripts/generate_stories.py \
     --pipeline xes \
     --input "$XES_FILE" \
     --output-prefix bullet \
     --format bullet_points \
-    --test-size 0.34 \
+    --test-size 0.15 \
     --seed 42
 
 if [ $? -eq 0 ]; then
@@ -62,13 +62,13 @@ fi
 # Scenario 3: Con token clinici (SPERIMENTALE)
 echo -e "${BLUE}📝 Scenario 3: Generazione con TOKEN CLINICI${NC}"
 echo "   (SPERIMENTALE - per analisi XAI)"
-python generate_stories.py \
+uv run python scripts/generate_stories.py \
     --pipeline xes \
     --input "$XES_FILE" \
     --output-prefix clinical \
     --format narrative \
     --clinical-tokens \
-    --test-size 0.34 \
+    --test-size 0.15 \
     --seed 42
 
 if [ $? -eq 0 ]; then
@@ -87,5 +87,5 @@ ls -lh output/*.pkl 2>/dev/null || echo "   Nessun file generato"
 
 echo -e "\n📚 Prossimi passi:"
 echo "   1. Modifica train_llm.py per usare i file generati"
-echo "   2. Esegui: python train_llm.py"
-echo "   3. Valuta i risultati con: python eval_model.py"
+echo "   2. Esegui: uv run python train_llm.py"
+echo "   3. Valuta i risultati con: uv run python eval_model.py"

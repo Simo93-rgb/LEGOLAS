@@ -98,7 +98,7 @@ def generate_stories_from_csv(csv_file: str) -> Tuple[List[str], List[int]]:
 def split_train_test(
     stories: List[str],
     labels: List[int],
-    test_size: float = 0.34,
+    test_size: float = 0.15,
     random_state: int = 42
 ) -> Tuple[List[str], List[str], List[int], List[int]]:
     """
@@ -107,7 +107,7 @@ def split_train_test(
     Args:
         stories: Lista di storie narrative
         labels: Lista di label corrispondenti
-        test_size: Proporzione del test set (default 0.34)
+        test_size: Proporzione del test set (default 0.15)
         random_state: Seed per riproducibilità
         
     Returns:
@@ -147,9 +147,9 @@ def save_stories(
         test_labels: Label di test
         output_prefix: Prefisso per i file di output
     """
-    # Crea directory output se non esiste
-    output_dir = Path("output")
-    output_dir.mkdir(exist_ok=True)
+    # Crea directory output/stories se non esiste
+    output_dir = Path("output") / "stories"
+    output_dir.mkdir(parents=True, exist_ok=True)
     
     files = {
         f"{output_prefix}_train.pkl": train_stories,
@@ -212,8 +212,8 @@ def main():
     parser.add_argument(
         "--test-size",
         type=float,
-        default=0.34,
-        help="Proporzione del test set (default: 0.34)"
+        default=0.15,
+        help="Proporzione del test set (default: 0.15)"
     )
     
     parser.add_argument(

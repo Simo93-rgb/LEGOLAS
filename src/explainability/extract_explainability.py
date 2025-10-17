@@ -46,7 +46,7 @@ def load_trained_model(model_name: str, story_format: str, num_classes: int,
         num_classes: Numero di classi
         device: Device per computation
         use_ensemble: Se True, carica EnsembleModel; altrimenti best fold
-        
+    
     Returns:
         model, tokenizer, is_ensemble
     """
@@ -79,53 +79,67 @@ def load_trained_model(model_name: str, story_format: str, num_classes: int,
     return model, tokenizer, is_ensemble
 
 
-def load_test_data(story_format: str):
+def load_test_data(story_format: str, dataset: str = 'test'):
     """
-    Carica dati di test
+    Carica dati dal dataset richiesto.
+    
+    Args:
+        story_format: Formato storie ('narrativo', 'bullet', 'clinical')
+        dataset: 'test' (default), 'train', oppure 'all' per unire train+test
     
     Returns:
-        texts, true_labels, predicted_labels
+        texts, true_labels, label2id
     """
-    print(f"📖 Loading test data (format: {story_format})...")
-    
-    # Carica test stories
-    test_path = get_story_file_path(story_format, 'test')
-    with open(test_path, 'rb') as f:
-        texts = pickle.load(f)
-    
-    # Carica labels
-    label_test_path = get_story_file_path(story_format, 'label_test')
-    with open(label_test_path, 'rb') as f:
-        labels_str = pickle.load(f)
-    
-    label_train_path = get_story_file_path(story_format, 'label_train')
-    with open(label_train_path, 'rb') as f:
-        labels_train_str = pickle.load(f)
-    
-    # Crea mapping label
-    unique_labels = sorted(set(labels_train_str))
-    label2id = {label: idx for idx, label in enumerate(unique_labels)}
-    
-    # Converti labels
-    true_labels = [label2id[label] for label in labels_str]
-    
-    print(f"   ✅ Loaded {len(texts)} test samples")
-    print(f"   📊 Label mapping: {label2id}")
-    
-    # Identifica quale è classe 0 (più numerosa)
+    assert dataset in {'test', 'train', 'all'}, "dataset deve essere 'test', 'train' o 'all'"
+    print(f"📖 Loading data (format: {story_format}, dataset: {dataset})...")
+
+    def _load_split(split: str):
+        # Carica stories
+        stories_path = get_story_file_path(story_format, split)
+        with open(stories_path, 'rb') as f:
+            split_texts = pickle.load(f)
+        # Carica labels stringhe per lo split
+        label_path = get_story_file_path(story_format, f'label_{split}')
+        with open(label_path, 'rb') as f:
+            split_labels_str = pickle.load(f)
+        return split_texts, split_labels_str
+
+    if dataset == 'all':
+        texts_test, labels_test_str = _load_split('test')
+        texts_train, labels_train_str = _load_split('train')
+        texts = list(texts_train) + list(texts_test)
+        labels_str = list(labels_train_str) + list(labels_test_str)
+        # Mapping dalle label TRAIN per coerenza con training
+        unique_labels = sorted(set(labels_train_str))
+        label2id = {label: idx for idx, label in enumerate(unique_labels)}
+        true_labels = [label2id[label] for label in labels_str]
+        print(f"   ✅ Loaded {len(texts)} samples (train+test)")
+        print(f"   📊 Label mapping (from train): {label2id}")
+    else:
+        # Singolo split
+        texts, labels_str = _load_split(dataset)
+        # Servono le label train per definire mapping coerente
+        _, labels_train_str = _load_split('train')
+        unique_labels = sorted(set(labels_train_str))
+        label2id = {label: idx for idx, label in enumerate(unique_labels)}
+        true_labels = [label2id[label] for label in labels_str]
+        print(f"   ✅ Loaded {len(texts)} {dataset} samples")
+        print(f"   📊 Label mapping (from train): {label2id}")
+
+    # Distribuzione classi
     from collections import Counter
     label_counts = Counter(true_labels)
-    class_0_count = label_counts[0]
-    class_1_count = label_counts[1]
-    
+    class_0_count = label_counts.get(0, 0)
+    class_1_count = label_counts.get(1, 0)
+    total = len(true_labels)
     print(f"\n   📈 Class distribution:")
-    print(f"      Class 0: {class_0_count} samples ({class_0_count/len(true_labels)*100:.1f}%)")
-    print(f"      Class 1: {class_1_count} samples ({class_1_count/len(true_labels)*100:.1f}%)")
-    
+    print(f"      Class 0: {class_0_count} samples ({(class_0_count/total*100 if total else 0):.1f}%)")
+    print(f"      Class 1: {class_1_count} samples ({(class_1_count/total*100 if total else 0):.1f}%)")
+
     if class_0_count < class_1_count:
         print(f"\n   ⚠️  WARNING: Class 0 has fewer samples than Class 1!")
         print(f"       Verify label mapping is correct")
-    
+
     return texts, true_labels, label2id
 
 
@@ -215,7 +229,7 @@ def main():
     parser.add_argument(
         '--model',
         type=str,
-        default='clinical-bert',
+        default='bert-base-uncased',
         help='Model name (es: clinical-bert, pubmedbert-base, bert-base-uncased)'
     )
     parser.add_argument(
@@ -226,15 +240,22 @@ def main():
         help='Story format'
     )
     parser.add_argument(
+        '--dataset',
+        type=str,
+        default='all',
+        choices=['test', 'train', 'all'],
+        help="Dataset da usare: 'test', 'train' o 'all' (train+test)"
+    )
+    parser.add_argument(
         '--n_samples',
         type=int,
         default=None,
-        help='Number of samples to analyze (None = all test set)'
+        help='Number of samples to analyze (None = all selected dataset)'
     )
     parser.add_argument(
         '--top_k',
         type=int,
-        default=25,
+        default=20,
         help='Number of top words to visualize'
     )
     parser.add_argument(
@@ -269,6 +290,7 @@ def main():
     print(f"\n📋 Configuration:")
     print(f"   Model: {args.model}")
     print(f"   Format: {args.format}")
+    print(f"   Dataset: {args.dataset}")
     print(f"   Device: {args.device}")
     print(f"   Mode: {'Ensemble (K-Fold)' if args.use_ensemble else 'Best fold only'}")
     print(f"   Top-K: {args.top_k}")
@@ -283,8 +305,8 @@ def main():
     # Timestamp per file output
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
-    # 1. Load test data (per ottenere num_classes)
-    texts, true_labels, label2id = load_test_data(args.format)
+    # 1. Load data (per ottenere num_classes)
+    texts, true_labels, label2id = load_test_data(args.format, dataset=args.dataset)
     num_classes = len(label2id)
     
     print(f"\n   📊 Dataset: {len(texts)} samples, {num_classes} classes")
@@ -320,7 +342,7 @@ def main():
     
     # Accuracy
     correct = sum(t == p for t, p in zip(true_labels, predicted_labels))
-    accuracy = correct / len(true_labels)
+    accuracy = correct / len(true_labels) if len(true_labels) else 0.0
     print(f"\n   🎯 Accuracy: {accuracy:.2%} ({correct}/{len(true_labels)})")
     
     # 4. Extract Integrated Gradients
