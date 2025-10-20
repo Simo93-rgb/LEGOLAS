@@ -14,6 +14,7 @@ import glob
 import numpy as np
 from pathlib import Path
 from datetime import datetime
+from tqdm import tqdm
 
 from transformers import AutoTokenizer, AutoModel
 from src.models.neural_network import LongFormerMultiClassificationHeads
@@ -143,7 +144,7 @@ def load_test_data(story_format: str, dataset: str = 'test'):
     return texts, true_labels, label2id
 
 
-def get_model_predictions(model, tokenizer, texts, device='cuda', batch_size=32, is_ensemble=False):
+def get_model_predictions(model, tokenizer, texts, device='cuda', internal_batch_size=32, is_ensemble=False):
     """
     Ottieni predizioni del modello su test set
     
@@ -152,7 +153,7 @@ def get_model_predictions(model, tokenizer, texts, device='cuda', batch_size=32,
         tokenizer: Tokenizer
         texts: List of text strings
         device: Device for computation
-        batch_size: Batch size
+        internal_batch_size: Batch size
         is_ensemble: If True, model is EnsembleModel
         
     Returns:
@@ -165,8 +166,8 @@ def get_model_predictions(model, tokenizer, texts, device='cuda', batch_size=32,
         all_probs = []
         all_preds = []
         
-        for i in range(0, len(texts), batch_size):
-            batch_texts = texts[i:i+batch_size]
+        for i in range(0, len(texts), internal_batch_size):
+            batch_texts = texts[i:i+internal_batch_size]
             
             # Tokenize
             encoding = tokenizer(
@@ -194,8 +195,8 @@ def get_model_predictions(model, tokenizer, texts, device='cuda', batch_size=32,
         all_probs = []
         
         with torch.no_grad():
-            for i in range(0, len(texts), batch_size):
-                batch_texts = texts[i:i+batch_size]
+            for i in range(0, len(texts), internal_batch_size):
+                batch_texts = texts[i:i+internal_batch_size]
                 
                 # Tokenize
                 encoding = tokenizer(
@@ -242,7 +243,7 @@ def main():
     parser.add_argument(
         '--dataset',
         type=str,
-        default='all',
+        default='test',
         choices=['test', 'train', 'all'],
         help="Dataset da usare: 'test', 'train' o 'all' (train+test)"
     )
@@ -265,16 +266,21 @@ def main():
         help='Device for computation'
     )
     parser.add_argument(
-        '--batch_size',
+        '--internal_batch_size',
         type=int,
-        default=8,
-        help='Batch size for IG computation'
+        default=32,
+        help='Internal batch size for IG interpolation steps (higher=faster, but uses more GPU memory). Default: 32'
     )
     parser.add_argument(
         '--n_steps',
         type=int,
-        default=50,
-        help='Number of steps for Integrated Gradients'
+        default=1500,
+        help='Number of steps for Integrated Gradients (default: 1500, validated for convergence)'
+    )
+    parser.add_argument(
+        '--adaptive_steps',
+        action='store_true',
+        help='Use adaptive n_steps strategy: start with 1000, increase to 2000 if needed (saves ~30%% time)'
     )
     parser.add_argument(
         '--use_ensemble',
@@ -294,8 +300,11 @@ def main():
     print(f"   Device: {args.device}")
     print(f"   Mode: {'Ensemble (K-Fold)' if args.use_ensemble else 'Best fold only'}")
     print(f"   Top-K: {args.top_k}")
-    print(f"   Batch size: {args.batch_size}")
-    print(f"   IG steps: {args.n_steps}")
+    print(f"   Internal batch size: {args.internal_batch_size} (for IG interpolation)")
+    if args.adaptive_steps:
+        print(f"   IG steps: Adaptive (1000→2000 if needed, tolerance=0.05)")
+    else:
+        print(f"   IG steps: {args.n_steps} (fixed)")
     
     # Assicura directory output
     ensure_directories()
@@ -329,7 +338,7 @@ def main():
     # 3. Get predictions
     predicted_labels, predicted_probs = get_model_predictions(
         model, tokenizer, texts, args.device, 
-        batch_size=32,  # Prediction batch size (diverso da IG batch)
+        internal_batch_size=32,  # Prediction batch size (diverso da IG batch)
         is_ensemble=is_ensemble
     )
     
@@ -348,6 +357,55 @@ def main():
     # 4. Extract Integrated Gradients
     print(f"\n{'='*80}")
     
+    # Helper function: Strategia adattiva per IG (riutilizzabile per ensemble e single)
+    def compute_attributions_adaptive(
+        compute_fn,  # Funzione che calcola IG: (n_steps) -> (attributions, diagnostics?)
+        use_adaptive: bool,
+        fixed_n_steps: int,
+        get_rel_error_fn=None  # Funzione per estrarre rel_error da diagnostics (se diverso)
+    ):
+        """
+        Wrapper per strategia adattiva: prova 1000 steps, se non converge usa 2000.
+        
+        Args:
+            compute_fn: Callable che accetta n_steps e ritorna (attributions, diagnostics?) 
+            use_adaptive: Se True, usa strategia adattiva
+            fixed_n_steps: n_steps da usare in modalità fissa
+            get_rel_error_fn: Callable per estrarre rel_error da diagnostics
+            
+        Returns:
+            attributions, adaptive_upgraded (bool indicating if upgraded to 2000)
+        """
+        if use_adaptive:
+            n_steps_initial = 1000
+            n_steps_max = 2000
+            tolerance = 0.05
+            
+            # Tentativo con 1000 steps
+            result = compute_fn(n_steps_initial)
+            
+            # Estrai rel_error (default: cerca 'avg_rel_error' o 'rel_error')
+            if get_rel_error_fn:
+                rel_error = get_rel_error_fn(result)
+            else:
+                # Default: result è tuple (attributions, diagnostics)
+                diagnostics = result[1] if isinstance(result, tuple) else {}
+                rel_error = diagnostics.get('avg_rel_error') or diagnostics.get('rel_error', float('inf'))
+            
+            # Se non converge, ricalcola con 2000
+            if rel_error > tolerance:
+                result = compute_fn(n_steps_max)
+                upgraded = True
+            else:
+                upgraded = False
+                
+            return result, upgraded
+        else:
+            # Modalità fissa
+            result = compute_fn(fixed_n_steps)
+            return result, False
+    
+    
     if is_ensemble:
         # Ensemble mode: usa compute_ensemble_attributions per ogni sample
         print(f"🔍 Computing Ensemble Integrated Gradients...")
@@ -358,10 +416,12 @@ def main():
         temp_explainer = IntegratedGradientsExplainer(model.models[0], tokenizer, args.device)
         
         results = []
-        for idx, text in enumerate(texts):
-            if idx % 100 == 0:
-                print(f"   Processing sample {idx+1}/{len(texts)}...")
-            
+        
+                # Stats per strategia adattiva
+        adaptive_stats = {'started_1000': 0, 'upgraded_2000': 0}
+        
+        # Progress bar per ensemble IG
+        for idx, text in enumerate(tqdm(texts, desc="   Computing Ensemble IG", unit="sample")):
             # Tokenize
             encoding = tokenizer(text, padding=True, truncation=True, 
                                 max_length=512, return_tensors='pt')
@@ -369,13 +429,35 @@ def main():
             attention_mask = encoding['attention_mask'].to(args.device)
             tokens = tokenizer.convert_ids_to_tokens(input_ids[0])
             
-            # Compute ensemble attributions
-            ensemble_attributions = model.compute_ensemble_attributions(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                target_class=predicted_labels[idx],
-                n_steps=args.n_steps
+            # Define compute function for adaptive wrapper
+            def compute_fn(n_steps):
+                return model.compute_ensemble_attributions(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    target_class=predicted_labels[idx],
+                    n_steps=n_steps,
+                    return_diagnostics=True
+                )
+            
+            # Track adaptive stats
+            if args.adaptive_steps:
+                adaptive_stats['started_1000'] += 1
+            
+            # Compute with adaptive/fixed strategy
+            result, upgraded = compute_attributions_adaptive(
+                compute_fn=compute_fn,
+                use_adaptive=args.adaptive_steps,
+                fixed_n_steps=args.n_steps
             )
+            
+            if upgraded:
+                adaptive_stats['upgraded_2000'] += 1
+            
+            # Extract attributions (if return_diagnostics=True, result is tuple)
+            if isinstance(result, tuple):
+                ensemble_attributions, diagnostics = result
+            else:
+                ensemble_attributions = result
             
             # Use explainer's aggregate method to convert tokens to words
             word_attributions = temp_explainer.aggregate_subword_attributions(
@@ -394,20 +476,109 @@ def main():
             
         print(f"   ✅ Ensemble IG completed for {len(results)} samples")
         
+        # Report statistiche adattive
+        if args.adaptive_steps:
+            upgraded_pct = (adaptive_stats['upgraded_2000'] / adaptive_stats['started_1000'] * 100) if adaptive_stats['started_1000'] > 0 else 0
+            print(f"\n   📊 Adaptive strategy statistics:")
+            print(f"      Started with 1000 steps: {adaptive_stats['started_1000']} samples")
+            print(f"      Upgraded to 2000 steps: {adaptive_stats['upgraded_2000']} samples ({upgraded_pct:.1f}%)")
+            print(f"      Estimated time saved: ~{(1 - upgraded_pct/100) * 33:.1f}% vs fixed 2000 steps")
+        
         # Use temp_explainer for subsequent processing
         explainer = temp_explainer
         
     else:
-        # Single model mode (originale)
+        # Single model mode con strategia adattiva
+        print(f"🔍 Computing Integrated Gradients (single model)...")
         explainer = IntegratedGradientsExplainer(model, tokenizer, args.device)
         
-        results = explainer.explain_batch(
-            texts=texts,
-            labels=true_labels,
-            predicted_classes=predicted_labels,
-            batch_size=args.batch_size,
-            n_steps=args.n_steps
-        )
+        results = []
+        adaptive_stats = {'started_1000': 0, 'upgraded_2000': 0}
+        
+        if args.adaptive_steps:
+            # Strategia adattiva per single model
+            from src.explainability.ig_completeness import compute_ig_with_completeness_check
+            
+            # Progress bar per single model IG
+            for idx, text in enumerate(tqdm(texts, desc="   Computing Single Model IG", unit="sample")):
+                # Tokenize
+                encoding = tokenizer(text, padding=True, truncation=True,
+                                    max_length=512, return_tensors='pt')
+                input_ids = encoding['input_ids'].to(args.device)
+                attention_mask = encoding['attention_mask'].to(args.device)
+                tokens = tokenizer.convert_ids_to_tokens(input_ids[0])
+                
+                # Get embeddings
+                embeddings = model.longformer.embeddings.word_embeddings(input_ids)
+                baseline_embeds = torch.zeros_like(embeddings)
+                
+                # Define forward function for IG
+                def forward_func(input_embeds, attention_mask_param=attention_mask):
+                    outputs = model.longformer(
+                        inputs_embeds=input_embeds,
+                        attention_mask=attention_mask_param
+                    )
+                    logits = model.output_layer(outputs.pooler_output)
+                    return logits
+                
+                # Define compute function for adaptive wrapper
+                def compute_fn(n_steps):
+                    return compute_ig_with_completeness_check(
+                        forward_fn=forward_func,
+                        input_embeds=embeddings,
+                        baseline_embeds=baseline_embeds,
+                        target_class=predicted_labels[idx],
+                        n_steps=n_steps,
+                        device=args.device
+                    )
+                
+                # Track adaptive stats
+                adaptive_stats['started_1000'] += 1
+                
+                # Compute with adaptive strategy
+                (attributions, diagnostics), upgraded = compute_attributions_adaptive(
+                    compute_fn=compute_fn,
+                    use_adaptive=True,
+                    fixed_n_steps=args.n_steps
+                )
+                
+                if upgraded:
+                    adaptive_stats['upgraded_2000'] += 1
+                
+                # Sum across embedding dimension e converti a numpy
+                attributions_np = attributions.sum(dim=-1).squeeze(0).detach().cpu().numpy()
+                
+                # Aggregate subwords to words
+                word_attributions = explainer.aggregate_subword_attributions(tokens, attributions_np)
+                
+                results.append({
+                    'text': text,
+                    'tokens': tokens,
+                    'token_attributions': attributions_np.tolist(),
+                    'word_attributions': word_attributions,
+                    'true_label': true_labels[idx],
+                    'predicted_label': predicted_labels[idx],
+                    'predicted_prob': predicted_probs[idx]
+                })
+            
+            print(f"   ✅ Single model IG completed for {len(results)} samples")
+            
+            # Report statistiche adattive
+            upgraded_pct = (adaptive_stats['upgraded_2000'] / adaptive_stats['started_1000'] * 100) if adaptive_stats['started_1000'] > 0 else 0
+            print(f"\n   📊 Adaptive strategy statistics:")
+            print(f"      Started with 1000 steps: {adaptive_stats['started_1000']} samples")
+            print(f"      Upgraded to 2000 steps: {adaptive_stats['upgraded_2000']} samples ({upgraded_pct:.1f}%)")
+            print(f"      Estimated time saved: ~{(1 - upgraded_pct/100) * 33:.1f}% vs fixed 2000 steps")
+            
+        else:
+            # Strategia fissa: usa explain_batch originale
+            results = explainer.explain_batch(
+                texts=texts,
+                labels=true_labels,
+                predicted_classes=predicted_labels,
+                internal_batch_size=args.internal_batch_size,
+                n_steps=args.n_steps
+            )
     
     # Salva risultati raw
     mode_suffix = "ensemble" if is_ensemble else "single"

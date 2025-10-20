@@ -402,8 +402,14 @@ class EnsembleModel:
         attention_mask: torch.Tensor,
         target_class: int,
         n_steps: int = 50,
-        internal_batch_size: int = 32
-    ) -> torch.Tensor:
+        internal_batch_size: int = 32,
+        check_completeness: bool = True,
+        auto_increase_steps: bool = False,
+        target_rel_error: float = 0.05,
+        max_steps: int = 500,
+        verbose: bool = False,
+        return_diagnostics: bool = False
+    ):
         """
         Compute Ensemble Integrated Gradients: calcola IG per ogni fold, poi media
         
@@ -411,26 +417,48 @@ class EnsembleModel:
         1. Per ogni fold model: compute Integrated Gradients
         2. Average attributions across folds: mean(attributions, axis=0)
         
+        NEW: Completeness check (Sundararajan et al., 2017)
+        - Verifica che sum(attributions) ≈ f(x) - f(baseline)
+        - Se auto_increase_steps=True, aumenta n_steps fino a convergenza
+        
         Args:
             input_ids: Input token IDs (1, seq_len) - SINGLE SAMPLE
             attention_mask: Attention mask (1, seq_len)
             target_class: Target class index for attribution
             n_steps: Number of IG interpolation steps (default: 50)
             internal_batch_size: Batch size for IG steps (default: 32)
+            check_completeness: If True, verifica convergenza IG (default: True)
+            auto_increase_steps: If True, aumenta n_steps automaticamente se non converge
+            target_rel_error: Target relative error for convergence (default: 0.05 = 5%)
+            max_steps: Maximum n_steps quando auto_increase_steps=True (default: 500)
+            verbose: Print diagnostics (default: False)
+            return_diagnostics: If True, return (attributions, diagnostics_summary) (default: False)
             
         Returns:
-            Averaged attributions: (seq_len,) - IG scores per token
+            If return_diagnostics=False:
+                Averaged attributions: (seq_len,) - IG scores per token
+            If return_diagnostics=True:
+                Tuple (attributions, diagnostics_dict) where diagnostics_dict contains:
+                - avg_rel_error: Average relative error across folds
+                - converged_folds: Number of folds that converged
+                - total_folds: Total number of folds
+                - fold_diagnostics: List of per-fold diagnostics
             
         Example:
             >>> ensemble = EnsembleModel(...)
             >>> input_ids = tokenizer(text, return_tensors='pt')['input_ids']
             >>> attention_mask = tokenizer(text, return_tensors='pt')['attention_mask']
             >>> attributions = ensemble.compute_ensemble_attributions(
-            ...     input_ids, attention_mask, target_class=1, n_steps=50
+            ...     input_ids, attention_mask, target_class=1, n_steps=50,
+            ...     check_completeness=True, auto_increase_steps=True
             ... )
             >>> print(f"Attribution shape: {attributions.shape}")  # (seq_len,)
         """
         from captum.attr import IntegratedGradients
+        from src.explainability.ig_completeness import (
+            compute_ig_with_completeness_check,
+            find_optimal_n_steps
+        )
         
         # Ensure single sample
         assert input_ids.size(0) == 1, "compute_ensemble_attributions supports SINGLE sample only"
@@ -441,6 +469,7 @@ class EnsembleModel:
         
         # Collect attributions da tutti i fold
         all_attributions = []
+        all_diagnostics = []
         
         for fold_idx, model in enumerate(self.models):
             # Set model to eval mode
@@ -460,22 +489,60 @@ class EnsembleModel:
             # Get input embeddings
             embeddings = model.longformer.embeddings.word_embeddings(input_ids)
             
-            # Initialize IntegratedGradients
-            ig = IntegratedGradients(forward_func)
+            # Baseline: zero embeddings
+            baseline_embeds = torch.zeros_like(embeddings)
             
-            # Compute attributions per questo fold
-            attributions = ig.attribute(
-                embeddings,
-                target=target_class,
-                n_steps=n_steps,
-                internal_batch_size=internal_batch_size
-            )
+            if check_completeness and auto_increase_steps:
+                # Auto-increase n_steps fino a convergenza
+                if verbose:
+                    print(f"   Fold {fold_idx}: Auto-finding optimal n_steps...")
+                
+                attributions, diagnostics, optimal_steps = find_optimal_n_steps(
+                    forward_fn=forward_func,
+                    input_embeds=embeddings,
+                    baseline_embeds=baseline_embeds,
+                    target_class=target_class,
+                    initial_steps=n_steps,
+                    max_steps=max_steps,
+                    target_rel_error=target_rel_error,
+                    device=self.device,
+                    verbose=verbose
+                )
+                
+            elif check_completeness:
+                # Compute IG con completeness check (n_steps fisso)
+                attributions, diagnostics = compute_ig_with_completeness_check(
+                    forward_fn=forward_func,
+                    input_embeds=embeddings,
+                    baseline_embeds=baseline_embeds,
+                    target_class=target_class,
+                    n_steps=n_steps,
+                    internal_batch_size=internal_batch_size,
+                    device=self.device
+                )
+                
+                if verbose or not diagnostics['converged']:
+                    status = "✅" if diagnostics['converged'] else "⚠️"
+                    print(f"   Fold {fold_idx}: {status} rel_error={diagnostics['rel_error']:.4f}")
+                    
+            else:
+                # Original IG (no completeness check)
+                ig = IntegratedGradients(forward_func)
+                attributions = ig.attribute(
+                    embeddings,
+                    target=target_class,
+                    n_steps=n_steps,
+                    internal_batch_size=internal_batch_size
+                )
+                diagnostics = None
             
             # Sum across embedding dimension: (1, seq_len, hidden_dim) -> (1, seq_len)
             attributions_summed = attributions.sum(dim=-1)
             
             # Append: (seq_len,)
             all_attributions.append(attributions_summed.squeeze(0))
+            if diagnostics:
+                all_diagnostics.append(diagnostics)
         
         # Stack: (k_folds, seq_len)
         all_attributions = torch.stack(all_attributions, dim=0)
@@ -483,4 +550,33 @@ class EnsembleModel:
         # Average ensemble attributions: (seq_len,)
         ensemble_attributions = torch.mean(all_attributions, dim=0)
         
-        return ensemble_attributions
+        # Report completeness summary se abilitato
+        if check_completeness and all_diagnostics and verbose:
+            avg_rel_error = sum(d['rel_error'] for d in all_diagnostics) / len(all_diagnostics)
+            converged_count = sum(d['converged'] for d in all_diagnostics)
+            print(f"\n   📊 Ensemble completeness summary:")
+            print(f"      Avg rel_error: {avg_rel_error:.4f}")
+            print(f"      Converged folds: {converged_count}/{len(all_diagnostics)}")
+        
+        # Return diagnostics se richiesto
+        if return_diagnostics:
+            if all_diagnostics:
+                avg_rel_error = sum(d['rel_error'] for d in all_diagnostics) / len(all_diagnostics)
+                converged_count = sum(d['converged'] for d in all_diagnostics)
+                diagnostics_summary = {
+                    'avg_rel_error': avg_rel_error,
+                    'converged_folds': converged_count,
+                    'total_folds': len(all_diagnostics),
+                    'fold_diagnostics': all_diagnostics
+                }
+            else:
+                # No diagnostics available (check_completeness=False)
+                diagnostics_summary = {
+                    'avg_rel_error': None,
+                    'converged_folds': None,
+                    'total_folds': len(self.models),
+                    'fold_diagnostics': []
+                }
+            return ensemble_attributions, diagnostics_summary
+        else:
+            return ensemble_attributions
