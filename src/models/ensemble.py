@@ -521,9 +521,22 @@ class EnsembleModel:
                     device=self.device
                 )
                 
-                if verbose or not diagnostics['converged']:
+                # Log solo se verbose=True oppure se errore è molto alto (>10%)
+                if verbose or (not diagnostics['converged'] and diagnostics['rel_error'] > 0.10):
                     status = "✅" if diagnostics['converged'] else "⚠️"
-                    print(f"   Fold {fold_idx}: {status} rel_error={diagnostics['rel_error']:.4f}")
+                    
+                    # Caso speciale: instabilità numerica (f(x) ≈ f(baseline))
+                    if diagnostics.get('numerical_instability', False):
+                        status = "💤"  # Signal troppo debole
+                        print(f"   Fold {fold_idx}: {status} numerical_instability "
+                              f"(|f(x)-f(b)|={diagnostics.get('denominator', 0):.6f} < 1e-4, IG unreliable)")
+                    # Warning critico per errori > 100% (convergenza molto scarsa)
+                    elif diagnostics['rel_error'] > 1.0 and not diagnostics.get('numerical_instability', False):
+                        status = "🔥"  # Critico
+                        print(f"   Fold {fold_idx}: {status} rel_error={diagnostics['rel_error']:.4f} "
+                              f"(CRITICAL: >100%, increase n_steps)")
+                    else:
+                        print(f"   Fold {fold_idx}: {status} rel_error={diagnostics['rel_error']:.4f}")
                     
             else:
                 # Original IG (no completeness check)

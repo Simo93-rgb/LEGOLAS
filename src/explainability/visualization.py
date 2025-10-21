@@ -175,16 +175,13 @@ def plot_class_comparison(
     # Score classe 1 per le stesse parole
     scores_c1 = [top_words_class_1.get(w, 0.0) for w in words_c0]
     
-    # Normalizzazione SEPARATA per classe
+    # Normalizzazione SEPARATA per classe (ogni classe al proprio max)
     max_c0 = max(scores_c0) if scores_c0 else 1.0
     max_c1 = max(scores_c1) if scores_c1 else 1.0
     
-    # Normalizza al max della PROPRIA classe mostrata nel plot
-    # (non al max globale tra tutte le parole)
-    max_display = max(max_c0, max_c1)
-    
-    scores_c0_norm = [s / max_display for s in scores_c0]
-    scores_c1_norm = [s / max_display for s in scores_c1]
+    # Normalizza ciascuna classe al PROPRIO max (indipendentemente)
+    scores_c0_norm = [s / max_c0 for s in scores_c0]
+    scores_c1_norm = [s / max_c1 for s in scores_c1]
     
     # Setup plot ORIZZONTALE
     fig, ax = plt.subplots(figsize=(14, 10))
@@ -228,10 +225,10 @@ def plot_class_comparison(
     # Configurazione assi
     ax.set_yticks(x)
     ax.set_yticklabels(words_c0, fontsize=9)
-    ax.set_xlabel('Normalized Attribution Score', fontsize=12, fontweight='bold', labelpad=10)
+    ax.set_xlabel('Normalized Attribution Score (per-class)', fontsize=12, fontweight='bold', labelpad=10)
     ax.set_title(
         f'Class Comparison: Top {top_k} Words Attribution (ordered by Class 0)\n'
-        f'Normalized to max value in display = 1.0',
+        f'Each class normalized to its own max = 1.0',
         fontsize=14,
         fontweight='bold',
         pad=20
@@ -480,17 +477,13 @@ def plot_clinical_actions_comparison(
         else:
             scores_c1.append(0.0)
     
-    # Normalizza SEPARATAMENTE per visualizzazione comparativa
+    # Normalizza SEPARATAMENTE per visualizzazione comparativa (ogni classe al proprio max)
     max_c0 = max(scores_c0) if scores_c0 else 1
     max_c1 = max(scores_c1) if scores_c1 else 1
-    max_display = max(max_c0, max_c1)
     
-    if max_display > 0:
-        scores_c0_norm = [s / max_display for s in scores_c0]
-        scores_c1_norm = [s / max_display for s in scores_c1]
-    else:
-        scores_c0_norm = scores_c0
-        scores_c1_norm = scores_c1
+    # Normalizza ciascuna classe al PROPRIO max (indipendentemente)
+    scores_c0_norm = [s / max_c0 for s in scores_c0]
+    scores_c1_norm = [s / max_c1 for s in scores_c1]
     
     # Trunca nomi azioni (usa italiano)
     action_labels = [action[:50] + '...' if len(action) > 50 else action 
@@ -511,8 +504,8 @@ def plot_clinical_actions_comparison(
     # Labels e styling
     ax.set_yticks(x)
     ax.set_yticklabels(action_labels, fontsize=9)
-    ax.set_xlabel('Attribution Score (normalized to max in display)', fontsize=12)
-    ax.set_title(f'Top-{top_k} Clinical Actions Comparison\n(Ordered by Class 0 importance)', 
+    ax.set_xlabel('Attribution Score (each class normalized to own max = 1.0)', fontsize=12)
+    ax.set_title(f'Top-{top_k} Clinical Actions Comparison\n(Ordered by Class 0, per-class normalization)', 
                  fontsize=14, fontweight='bold')
     ax.legend(fontsize=11, loc='lower right')
     ax.grid(axis='x', alpha=0.3)
