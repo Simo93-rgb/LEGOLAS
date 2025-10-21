@@ -359,30 +359,30 @@ def main():
     
     # Helper function: Strategia adattiva per IG (riutilizzabile per ensemble e single)
     def compute_attributions_adaptive(
-        compute_fn,  # Funzione che calcola IG: (n_steps) -> (attributions, diagnostics?)
+        compute_fn,  # Funzione che calcola IG: (n_steps, verbose) -> (attributions, diagnostics?)
         use_adaptive: bool,
         fixed_n_steps: int,
         get_rel_error_fn=None  # Funzione per estrarre rel_error da diagnostics (se diverso)
     ):
         """
-        Wrapper per strategia adattiva: prova 1000 steps, se non converge usa 2000.
+        Wrapper per strategia adattiva: prova 800 steps, se non converge usa 2200.
         
         Args:
-            compute_fn: Callable che accetta n_steps e ritorna (attributions, diagnostics?) 
+            compute_fn: Callable che accetta (n_steps, verbose) e ritorna (attributions, diagnostics?) 
             use_adaptive: Se True, usa strategia adattiva
             fixed_n_steps: n_steps da usare in modalità fissa
             get_rel_error_fn: Callable per estrarre rel_error da diagnostics
             
         Returns:
-            attributions, adaptive_upgraded (bool indicating if upgraded to 2000)
+            attributions, adaptive_upgraded (bool indicating if upgraded to 2200)
         """
         if use_adaptive:
-            n_steps_initial = 1000
-            n_steps_max = 2000
+            n_steps_initial = 1500
+            n_steps_max = 5500  # Aumentato da 5500 per casi estremi
             tolerance = 0.05
-            
-            # Tentativo con 1000 steps
-            result = compute_fn(n_steps_initial)
+
+            # Tentativo con 1500 steps (SILENZIOSO - verbose=False)
+            result = compute_fn(n_steps_initial, verbose=False)
             
             # Estrai rel_error (default: cerca 'avg_rel_error' o 'rel_error')
             if get_rel_error_fn:
@@ -391,18 +391,18 @@ def main():
                 # Default: result è tuple (attributions, diagnostics)
                 diagnostics = result[1] if isinstance(result, tuple) else {}
                 rel_error = diagnostics.get('avg_rel_error') or diagnostics.get('rel_error', float('inf'))
-            
-            # Se non converge, ricalcola con 2000
+
+            # Se non converge, ricalcola con 5500 steps (VERBOSE - mostra diagnostics)
             if rel_error > tolerance:
-                result = compute_fn(n_steps_max)
+                result = compute_fn(n_steps_max, verbose=True)
                 upgraded = True
             else:
                 upgraded = False
                 
             return result, upgraded
         else:
-            # Modalità fissa
-            result = compute_fn(fixed_n_steps)
+            # Modalità fissa (verbose=True per vedere diagnostics)
+            result = compute_fn(fixed_n_steps, verbose=True)
             return result, False
     
     
@@ -429,14 +429,16 @@ def main():
             attention_mask = encoding['attention_mask'].to(args.device)
             tokens = tokenizer.convert_ids_to_tokens(input_ids[0])
             
+            # Ensemble mode
             # Define compute function for adaptive wrapper
-            def compute_fn(n_steps):
+            def compute_fn(n_steps, verbose=False):
                 return model.compute_ensemble_attributions(
                     input_ids=input_ids,
                     attention_mask=attention_mask,
                     target_class=predicted_labels[idx],
                     n_steps=n_steps,
-                    return_diagnostics=True
+                    return_diagnostics=True,
+                    verbose=verbose
                 )
             
             # Track adaptive stats
@@ -471,7 +473,8 @@ def main():
                 'word_attributions': word_attributions,
                 'true_label': true_labels[idx],
                 'predicted_label': predicted_labels[idx],
-                'predicted_prob': predicted_probs[idx]
+                'predicted_prob': predicted_probs[idx],
+                'diagnostics': diagnostics if isinstance(result, tuple) else None  # Salva diagnostics per analisi post-hoc
             })
             
         print(f"   ✅ Ensemble IG completed for {len(results)} samples")
@@ -480,9 +483,61 @@ def main():
         if args.adaptive_steps:
             upgraded_pct = (adaptive_stats['upgraded_2000'] / adaptive_stats['started_1000'] * 100) if adaptive_stats['started_1000'] > 0 else 0
             print(f"\n   📊 Adaptive strategy statistics:")
-            print(f"      Started with 1000 steps: {adaptive_stats['started_1000']} samples")
-            print(f"      Upgraded to 2000 steps: {adaptive_stats['upgraded_2000']} samples ({upgraded_pct:.1f}%)")
-            print(f"      Estimated time saved: ~{(1 - upgraded_pct/100) * 33:.1f}% vs fixed 2000 steps")
+            print(f"      Started with 1500 steps: {adaptive_stats['started_1000']} samples")
+            print(f"      Upgraded to 3500 steps: {adaptive_stats['upgraded_2000']} samples ({upgraded_pct:.1f}%)")
+            print(f"      Estimated time saved: ~{(1 - upgraded_pct/100) * 57:.1f}% vs fixed 3500 steps")
+        
+        # Analizza convergenza finale
+        critical_samples = []
+        numerical_instability_samples = []
+        
+        for idx, res in enumerate(results):
+            if res.get('diagnostics'):
+                diag = res['diagnostics']
+                # Controlla se qualche fold ha errore critico (>100%) o instabilità numerica
+                if 'fold_diagnostics' in diag:
+                    max_fold_error = max(fd['rel_error'] for fd in diag['fold_diagnostics'] if fd['rel_error'] != float('inf'))
+                    
+                    # Conta fold con instabilità numerica
+                    num_unstable = sum(1 for fd in diag['fold_diagnostics'] if fd.get('numerical_instability', False))
+                    
+                    if num_unstable > 0:
+                        numerical_instability_samples.append({
+                            'sample_idx': idx,
+                            'unstable_folds': num_unstable,
+                            'total_folds': diag['total_folds'],
+                            'avg_denominator': sum(fd.get('denominator', 0) for fd in diag['fold_diagnostics']) / len(diag['fold_diagnostics'])
+                        })
+                    elif max_fold_error > 1.0:
+                        # Errore >100% ma NON instabilità numerica → problema algoritmico
+                        critical_samples.append({
+                            'sample_idx': idx,
+                            'avg_rel_error': diag['avg_rel_error'],
+                            'max_fold_error': max_fold_error,
+                            'converged_folds': diag['converged_folds'],
+                            'total_folds': diag['total_folds']
+                        })
+        
+        # Report instabilità numeriche (segnale troppo debole)
+        if numerical_instability_samples:
+            print(f"\n   💤 INFO: {len(numerical_instability_samples)} samples with numerical instability (f(x)≈f(baseline)):")
+            for ns in numerical_instability_samples[:3]:
+                print(f"      Sample {ns['sample_idx']}: {ns['unstable_folds']}/{ns['total_folds']} folds, "
+                      f"avg |f(x)-f(b)|={ns['avg_denominator']:.6f}")
+            if len(numerical_instability_samples) > 3:
+                print(f"      ... and {len(numerical_instability_samples)-3} more")
+            print(f"      💡 These samples have very weak model signal - IG is unreliable but not wrong")
+        
+        # Report errori critici algoritmici (vera non-convergenza)
+        if critical_samples:
+            print(f"\n   🔥 WARNING: {len(critical_samples)} samples with algorithmic errors (>100%):")
+            for cs in critical_samples[:5]:  # Mostra primi 5
+                print(f"      Sample {cs['sample_idx']}: max_fold_error={cs['max_fold_error']:.2f}, "
+                      f"converged={cs['converged_folds']}/{cs['total_folds']}")
+            if len(critical_samples) > 5:
+                print(f"      ... and {len(critical_samples)-5} more")
+            print(f"      💡 Consider: 1) Increase n_steps to 5000+, 2) Check model stability")
+
         
         # Use temp_explainer for subsequent processing
         explainer = temp_explainer
@@ -522,7 +577,9 @@ def main():
                     return logits
                 
                 # Define compute function for adaptive wrapper
-                def compute_fn(n_steps):
+                def compute_fn(n_steps, verbose=False):
+                    # Note: compute_ig_with_completeness_check non ha parametro verbose
+                    # ma lo accettiamo per compatibilità con la signature comune
                     return compute_ig_with_completeness_check(
                         forward_fn=forward_func,
                         input_embeds=embeddings,

@@ -129,16 +129,26 @@ def compute_ig_with_completeness_check(
     sum_attr = attributions.sum().item()
     abs_error = abs(delta)
     
-    # Relative error (safe division)
+    # Relative error (safe division con soglia più alta per stabilità numerica)
     denominator = abs(f_x - f_b)
-    if denominator < eps:
+    
+    # Soglia per considerare f(x) ≈ f(baseline) (numericamente indistinguibili)
+    NUMERICAL_THRESHOLD = 1e-4  # Se differenza < 0.0001, considera "uguale"
+    
+    if denominator < NUMERICAL_THRESHOLD:
         # f(x) ≈ f(baseline) → attributions dovrebbero essere ~0
-        rel_error = abs_error / eps if abs_error > eps else 0.0
+        # Se anche abs_error è piccolo, è OK (convergenza su signal~0)
+        # Se abs_error è grande, è problema numerico (non algoritmico)
+        if abs_error < NUMERICAL_THRESHOLD:
+            rel_error = 0.0  # Convergenza perfetta su signal nullo
+        else:
+            # Errore numerico: signal troppo debole per IG affidabile
+            rel_error = float('inf')  # Marca come "non valutabile"
     else:
         rel_error = abs_error / denominator
     
-    # Convergence criterion: rel_error < 5% (threshold consigliato nel paper)
-    converged = rel_error < 0.05
+    # Convergence criterion: rel_error < 5% E signal sufficiente
+    converged = rel_error < 0.05 and denominator >= NUMERICAL_THRESHOLD
     
     diagnostics = {
         'f_x': float(f_x),
@@ -147,8 +157,10 @@ def compute_ig_with_completeness_check(
         'delta': float(delta),
         'abs_error': float(abs_error),
         'rel_error': float(rel_error),
+        'denominator': float(denominator),  # Aggiungi per debugging
         'n_steps': int(n_steps),
-        'converged': bool(converged)
+        'converged': bool(converged),
+        'numerical_instability': bool(denominator < NUMERICAL_THRESHOLD)  # Flag
     }
     
     return attributions.detach(), diagnostics
