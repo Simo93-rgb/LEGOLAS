@@ -725,10 +725,10 @@ if __name__ == '__main__':
         early_stopping = EarlyStopping(
             patience=config.early_stopping_patience,
             min_delta=config.early_stopping_min_delta,
-            use_loss_ratio=config.monitor_loss_ratio,
+            use_loss_ratio=config.use_loss_ratio_monitoring,
             loss_ratio_threshold=config.get_loss_ratio_threshold(),
             loss_ratio_patience=config.loss_ratio_patience,
-            restore_best_weights=config.restore_best_weights
+            restore_best_weights=True  # Sempre ripristina best weights
         )
         
         print(f"\n📊 Checkpoint dir: {checkpoint.save_dir}")
