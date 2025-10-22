@@ -70,7 +70,7 @@ def parse_args():
     parser.add_argument(
         '--n_folds',
         type=int,
-        default=10,
+        default=5,
         help='Numero di fold per K-Fold CV'
     )
     
@@ -110,13 +110,13 @@ def parse_args():
     parser.add_argument(
         '--learning_rate',
         type=float,
-        default=1e-5,
+        default=5e-5,
         help='Learning rate per optimizer'
     )
     parser.add_argument(
         '--patience',
         type=int,
-        default=5,
+        default=3,
         help='Patience per early stopping'
     )
     

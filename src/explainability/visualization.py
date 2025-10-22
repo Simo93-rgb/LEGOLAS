@@ -68,6 +68,7 @@ def plot_attention_heatmap(
     """
     Crea heatmap che mostra top-K parole per Classe 0 e Classe 1
     
+    FOCUS: Ordinato per importanza della CLASSE 1 (target principale)
     Normalizzazione: tutto normalizzato a 1, dove 1 = valore massimo globale
     
     Args:
@@ -77,18 +78,18 @@ def plot_attention_heatmap(
         save_path: Path dove salvare il plot
         normalize_global: Se True, normalizza al max globale (cross-class)
     """
-    # Prendi top-K parole per classe 0 (ordinate per score decrescente)
-    words_c0 = list(top_words_class_0.keys())[:top_k]
-    scores_c0 = [top_words_class_0[w] for w in words_c0]
+    # FOCUS: Prendi top-K parole per CLASSE 1 (ordinate per score decrescente)
+    words_c1 = list(top_words_class_1.keys())[:top_k]
+    scores_c1 = [top_words_class_1[w] for w in words_c1]
     
-    # Per classe 1, prendi score delle stesse parole (se presenti) o 0
-    scores_c1 = []
-    for word in words_c0:
-        scores_c1.append(top_words_class_1.get(word, 0.0))
+    # Per classe 0, prendi score delle stesse parole (se presenti) o 0
+    scores_c0 = []
+    for word in words_c1:
+        scores_c0.append(top_words_class_0.get(word, 0.0))
     
     # Normalizzazione globale
     if normalize_global:
-        max_score = max(max(scores_c0), max(scores_c1)) if scores_c1 else max(scores_c0)
+        max_score = max(max(scores_c1), max(scores_c0)) if scores_c0 else max(scores_c1)
         if max_score > 0:
             scores_c0_norm = [s / max_score for s in scores_c0]
             scores_c1_norm = [s / max_score for s in scores_c1]
@@ -100,15 +101,16 @@ def plot_attention_heatmap(
         scores_c1_norm = scores_c1
     
     # Crea matrice per heatmap (2 righe: classe 0 e classe 1)
-    data = np.array([scores_c0_norm, scores_c1_norm])
+    # ORDINE: Classe 1 in ALTO (focus principale)
+    data = np.array([scores_c1_norm, scores_c0_norm])
     
     # Plot
     fig, ax = plt.subplots(figsize=(16, 6))
     
     sns.heatmap(
         data,
-        xticklabels=words_c0,
-        yticklabels=['Class 0', 'Class 1'],
+        xticklabels=words_c1,
+        yticklabels=['Class 1 ⭐', 'Class 0'],  # Classe 1 evidenziata con stella
         cmap='YlOrRd',
         annot=True,
         fmt='.3f',
@@ -124,9 +126,9 @@ def plot_attention_heatmap(
     plt.xticks(rotation=45, ha='right')
     plt.yticks(rotation=0)
     
-    # Titolo e labels
+    # Titolo e labels (FOCUS su Classe 1)
     plt.title(
-        f'Attribution Heatmap: Top {top_k} Words (ordered by Class 0 importance)\n'
+        f'Attribution Heatmap: Top {top_k} Words (ordered by Class 1 ⭐ importance)\n'
         f'Normalized to max global value = 1.0',
         fontsize=14,
         fontweight='bold',
@@ -158,6 +160,7 @@ def plot_class_comparison(
     """
     Crea istogramma comparativo per Classe 0 e Classe 1 (ORIZZONTALE)
     
+    FOCUS: Ordinato per importanza della CLASSE 1 (target principale)
     Normalizzazione SEPARATA per classe:
     - Max valore per classe 0 = max tra i top_k di classe 0
     - Max valore per classe 1 = max tra i top_k di classe 1
@@ -168,12 +171,12 @@ def plot_class_comparison(
         top_k: Numero di parole da visualizzare
         save_path: Path dove salvare il plot
     """
-    # Top-K parole per classe 0 (ordinate decrescente)
-    words_c0 = list(top_words_class_0.keys())[:top_k]
-    scores_c0 = [top_words_class_0[w] for w in words_c0]
+    # FOCUS: Top-K parole per CLASSE 1 (ordinate decrescente)
+    words_c1 = list(top_words_class_1.keys())[:top_k]
+    scores_c1 = [top_words_class_1[w] for w in words_c1]
     
-    # Score classe 1 per le stesse parole
-    scores_c1 = [top_words_class_1.get(w, 0.0) for w in words_c0]
+    # Score classe 0 per le stesse parole
+    scores_c0 = [top_words_class_0.get(w, 0.0) for w in words_c1]
     
     # Normalizzazione SEPARATA per classe (ogni classe al proprio max)
     max_c0 = max(scores_c0) if scores_c0 else 1.0
@@ -186,30 +189,32 @@ def plot_class_comparison(
     # Setup plot ORIZZONTALE
     fig, ax = plt.subplots(figsize=(14, 10))
     
-    x = np.arange(len(words_c0))
+    x = np.arange(len(words_c1))
     width = 0.35
     
-    # Barre ORIZZONTALI affiancate
+    # Barre ORIZZONTALI affiancate (Classe 1 in evidenza con colore più brillante)
     bars1 = ax.barh(
         x - width/2,
-        scores_c0_norm,
+        scores_c1_norm,
         width,
-        label='Class 0',
-        color='steelblue',
-        alpha=0.8
+        label='Class 1 ⭐ (target)',
+        color='#e74c3c',  # Rosso brillante per Classe 1
+        alpha=0.9,
+        edgecolor='darkred',
+        linewidth=1.5
     )
     
     bars2 = ax.barh(
         x + width/2,
-        scores_c1_norm,
+        scores_c0_norm,
         width,
-        label='Class 1',
-        color='coral',
-        alpha=0.8
+        label='Class 0',
+        color='steelblue',
+        alpha=0.6  # Più trasparente per dare meno enfasi
     )
     
     # Aggiungi valori sulle barre
-    for bars, scores_original in [(bars1, scores_c0), (bars2, scores_c1)]:
+    for bars, scores_original in [(bars1, scores_c1), (bars2, scores_c0)]:
         for bar, score_orig in zip(bars, scores_original):
             width_val = bar.get_width()
             if width_val > 0.05:  # Mostra solo se barra visibile
@@ -224,10 +229,10 @@ def plot_class_comparison(
     
     # Configurazione assi
     ax.set_yticks(x)
-    ax.set_yticklabels(words_c0, fontsize=9)
+    ax.set_yticklabels(words_c1, fontsize=9)
     ax.set_xlabel('Normalized Attribution Score (per-class)', fontsize=12, fontweight='bold', labelpad=10)
     ax.set_title(
-        f'Class Comparison: Top {top_k} Words Attribution (ordered by Class 0)\n'
+        f'Class Comparison: Top {top_k} Words Attribution (ordered by Class 1 ⭐)\n'
         f'Each class normalized to its own max = 1.0',
         fontsize=14,
         fontweight='bold',
@@ -353,6 +358,8 @@ def plot_clinical_actions_heatmap(
     """
     Crea heatmap per AZIONI CLINICHE invece di parole singole
     
+    FOCUS: Ordinato per importanza della CLASSE 1 (target principale)
+    
     Args:
         actions_class_0: Dict azione -> {'mean_score', 'count', ...} per classe 0
         actions_class_1: Dict azione -> {'mean_score', 'count', ...} per classe 1
@@ -360,9 +367,9 @@ def plot_clinical_actions_heatmap(
         save_path: Path dove salvare il plot
         normalize_global: Se True, normalizza al max globale
     """
-    # Ordina azioni per mean_score decrescente (classe 0)
-    sorted_actions_c0 = sorted(
-        actions_class_0.items(),
+    # FOCUS: Ordina azioni per mean_score decrescente della CLASSE 1
+    sorted_actions_c1 = sorted(
+        actions_class_1.items(),
         key=lambda x: x[1]['mean_score'],
         reverse=True
     )[:top_k]
@@ -370,31 +377,32 @@ def plot_clinical_actions_heatmap(
     # Carica traduzioni inglese -> italiano
     translations = _load_italian_translations()
     
-    # Estrai nomi azioni e scores
-    action_names_english = [action for action, _ in sorted_actions_c0]
-    scores_c0 = [stats['mean_score'] for _, stats in sorted_actions_c0]
+    # Estrai nomi azioni e scores per Classe 1
+    action_names_english = [action for action, _ in sorted_actions_c1]
+    scores_c1 = [stats['mean_score'] for _, stats in sorted_actions_c1]
     
     # Traduci azioni in italiano
     action_names_italian = [_translate_to_italian(action, translations) 
                             for action in action_names_english]
     
-    # Per classe 1, prendi score delle stesse azioni (se presenti) o 0
-    scores_c1 = []
+    # Per classe 0, prendi score delle stesse azioni (se presenti) o 0
+    scores_c0 = []
     for action in action_names_english:
-        if action in actions_class_1:
-            scores_c1.append(actions_class_1[action]['mean_score'])
+        if action in actions_class_0:
+            scores_c0.append(actions_class_0[action]['mean_score'])
         else:
-            scores_c1.append(0.0)
+            scores_c0.append(0.0)
     
     # Normalizzazione globale
     if normalize_global:
-        max_score = max(max(scores_c0), max(scores_c1)) if scores_c1 else max(scores_c0)
+        max_score = max(max(scores_c1), max(scores_c0)) if scores_c0 else max(scores_c1)
         if max_score > 0:
             scores_c0 = [s / max_score for s in scores_c0]
             scores_c1 = [s / max_score for s in scores_c1]
     
     # Crea matrice 2xN (2 righe = 2 classi, N colonne = azioni)
-    data = np.array([scores_c0, scores_c1])
+    # ORDINE: Classe 1 in ALTO (focus principale)
+    data = np.array([scores_c1, scores_c0])
     
     # Trunca nomi azioni troppo lunghi (usa italiano)
     action_labels = [action[:50] + '...' if len(action) > 50 else action 
@@ -406,7 +414,7 @@ def plot_clinical_actions_heatmap(
     sns.heatmap(
         data,
         xticklabels=action_labels,
-        yticklabels=['Class 0 ', 'Class 1 '],
+        yticklabels=['Class 1 ⭐', 'Class 0'],  # Classe 1 evidenziata
         cmap='YlOrRd',
         annot=True,
         fmt='.3f',
@@ -418,7 +426,7 @@ def plot_clinical_actions_heatmap(
         annot_kws={'fontsize': 8}
     )
     
-    plt.title(f'Top-{top_k} Clinical Actions Attribution Heatmap\n(Ordered by Class 0 importance)', 
+    plt.title(f'Top-{top_k} Clinical Actions Attribution Heatmap\n(Ordered by Class 1 ⭐ importance)', 
               fontsize=14, fontweight='bold')
     plt.xlabel('Clinical Actions', fontsize=12)
     plt.ylabel('Class', fontsize=12)
@@ -445,15 +453,17 @@ def plot_clinical_actions_comparison(
     """
     Crea istogramma comparativo per AZIONI CLINICHE invece di parole singole
     
+    FOCUS: Ordinato per importanza della CLASSE 1 (target principale)
+    
     Args:
         actions_class_0: Dict azione -> {'mean_score', 'count', ...} per classe 0
         actions_class_1: Dict azione -> {'mean_score', 'count', ...} per classe 1
         top_k: Numero di azioni da visualizzare
         save_path: Path dove salvare il plot
     """
-    # Ordina azioni per mean_score decrescente (classe 0)
-    sorted_actions_c0 = sorted(
-        actions_class_0.items(),
+    # FOCUS: Ordina azioni per mean_score decrescente della CLASSE 1
+    sorted_actions_c1 = sorted(
+        actions_class_1.items(),
         key=lambda x: x[1]['mean_score'],
         reverse=True
     )[:top_k]
@@ -461,21 +471,21 @@ def plot_clinical_actions_comparison(
     # Carica traduzioni inglese -> italiano
     translations = _load_italian_translations()
     
-    # Estrai nomi azioni e scores
-    action_names_english = [action for action, _ in sorted_actions_c0]
-    scores_c0 = [stats['mean_score'] for _, stats in sorted_actions_c0]
+    # Estrai nomi azioni e scores per Classe 1
+    action_names_english = [action for action, _ in sorted_actions_c1]
+    scores_c1 = [stats['mean_score'] for _, stats in sorted_actions_c1]
     
     # Traduci azioni in italiano
     action_names_italian = [_translate_to_italian(action, translations) 
                             for action in action_names_english]
     
-    # Per classe 1, prendi score delle stesse azioni
-    scores_c1 = []
+    # Per classe 0, prendi score delle stesse azioni
+    scores_c0 = []
     for action in action_names_english:
-        if action in actions_class_1:
-            scores_c1.append(actions_class_1[action]['mean_score'])
+        if action in actions_class_0:
+            scores_c0.append(actions_class_0[action]['mean_score'])
         else:
-            scores_c1.append(0.0)
+            scores_c0.append(0.0)
     
     # Normalizza SEPARATAMENTE per visualizzazione comparativa (ogni classe al proprio max)
     max_c0 = max(scores_c0) if scores_c0 else 1
@@ -495,17 +505,23 @@ def plot_clinical_actions_comparison(
     x = np.arange(len(action_labels))
     width = 0.35
     
-    # Barre affiancate
-    bars1 = ax.barh(x - width/2, scores_c0_norm, width, 
-                    label='Class 0', color='steelblue', alpha=0.8)
-    bars2 = ax.barh(x + width/2, scores_c1_norm, width,
-                    label='Class 1', color='coral', alpha=0.8)
+    # Barre affiancate (Classe 1 in evidenza)
+    bars1 = ax.barh(x - width/2, scores_c1_norm, width, 
+                    label='Class 1 ⭐ (target)', 
+                    color='#e74c3c',  # Rosso brillante
+                    alpha=0.9,
+                    edgecolor='darkred',
+                    linewidth=1.5)
+    bars2 = ax.barh(x + width/2, scores_c0_norm, width,
+                    label='Class 0', 
+                    color='steelblue', 
+                    alpha=0.6)  # Più trasparente
     
     # Labels e styling
     ax.set_yticks(x)
     ax.set_yticklabels(action_labels, fontsize=9)
     ax.set_xlabel('Attribution Score (each class normalized to own max = 1.0)', fontsize=12)
-    ax.set_title(f'Top-{top_k} Clinical Actions Comparison\n(Ordered by Class 0, per-class normalization)', 
+    ax.set_title(f'Top-{top_k} Clinical Actions Comparison\n(Ordered by Class 1 ⭐, per-class normalization)', 
                  fontsize=14, fontweight='bold')
     ax.legend(fontsize=11, loc='lower right')
     ax.grid(axis='x', alpha=0.3)

@@ -35,6 +35,11 @@ from src.config.paths import (
     ensure_directories
 )
 
+# Configurazione Adaptive Integrated Gradients
+ADAPTIVE_IG_STEPS_INITIAL = 1500  # Step iniziali (veloce, ~60% samples converge)
+ADAPTIVE_IG_STEPS_MAX = 5500      # Step massimi per casi difficili
+ADAPTIVE_IG_TOLERANCE = 0.05      # Soglia errore relativo (5%)
+
 
 def load_trained_model(model_name: str, story_format: str, num_classes: int, 
                        device: str = 'cuda', use_ensemble: bool = False):
@@ -274,13 +279,13 @@ def main():
     parser.add_argument(
         '--n_steps',
         type=int,
-        default=1500,
-        help='Number of steps for Integrated Gradients (default: 1500, validated for convergence)'
+        default=ADAPTIVE_IG_STEPS_INITIAL,
+        help=f'Number of steps for Integrated Gradients (default: {ADAPTIVE_IG_STEPS_INITIAL}, validated for convergence)'
     )
     parser.add_argument(
         '--adaptive_steps',
         action='store_true',
-        help='Use adaptive n_steps strategy: start with 1000, increase to 2000 if needed (saves ~30%% time)'
+        help=f'Use adaptive n_steps strategy: start with {ADAPTIVE_IG_STEPS_INITIAL}, increase to {ADAPTIVE_IG_STEPS_MAX} if needed (tolerance={ADAPTIVE_IG_TOLERANCE})'
     )
     parser.add_argument(
         '--use_ensemble',
@@ -302,7 +307,7 @@ def main():
     print(f"   Top-K: {args.top_k}")
     print(f"   Internal batch size: {args.internal_batch_size} (for IG interpolation)")
     if args.adaptive_steps:
-        print(f"   IG steps: Adaptive (1000→2000 if needed, tolerance=0.05)")
+        print(f"   IG steps: Adaptive ({ADAPTIVE_IG_STEPS_INITIAL}→{ADAPTIVE_IG_STEPS_MAX} if needed, tolerance={ADAPTIVE_IG_TOLERANCE})")
     else:
         print(f"   IG steps: {args.n_steps} (fixed)")
     
@@ -365,7 +370,8 @@ def main():
         get_rel_error_fn=None  # Funzione per estrarre rel_error da diagnostics (se diverso)
     ):
         """
-        Wrapper per strategia adattiva: prova 800 steps, se non converge usa 2200.
+        Wrapper per strategia adattiva: prova ADAPTIVE_IG_STEPS_INITIAL steps, 
+        se non converge usa ADAPTIVE_IG_STEPS_MAX.
         
         Args:
             compute_fn: Callable che accetta (n_steps, verbose) e ritorna (attributions, diagnostics?) 
@@ -374,14 +380,14 @@ def main():
             get_rel_error_fn: Callable per estrarre rel_error da diagnostics
             
         Returns:
-            attributions, adaptive_upgraded (bool indicating if upgraded to 2200)
+            attributions, adaptive_upgraded (bool indicating if upgraded to max steps)
         """
         if use_adaptive:
-            n_steps_initial = 1500
-            n_steps_max = 5500  # Aumentato da 5500 per casi estremi
-            tolerance = 0.05
+            n_steps_initial = ADAPTIVE_IG_STEPS_INITIAL
+            n_steps_max = ADAPTIVE_IG_STEPS_MAX
+            tolerance = ADAPTIVE_IG_TOLERANCE
 
-            # Tentativo con 1500 steps (SILENZIOSO - verbose=False)
+            # Tentativo con ADAPTIVE_IG_STEPS_INITIAL steps (SILENZIOSO - verbose=False)
             result = compute_fn(n_steps_initial, verbose=False)
             
             # Estrai rel_error (default: cerca 'avg_rel_error' o 'rel_error')
@@ -392,7 +398,7 @@ def main():
                 diagnostics = result[1] if isinstance(result, tuple) else {}
                 rel_error = diagnostics.get('avg_rel_error') or diagnostics.get('rel_error', float('inf'))
 
-            # Se non converge, ricalcola con 5500 steps (VERBOSE - mostra diagnostics)
+            # Se non converge, ricalcola con ADAPTIVE_IG_STEPS_MAX steps (VERBOSE - mostra diagnostics)
             if rel_error > tolerance:
                 result = compute_fn(n_steps_max, verbose=True)
                 upgraded = True
@@ -417,8 +423,8 @@ def main():
         
         results = []
         
-                # Stats per strategia adattiva
-        adaptive_stats = {'started_1000': 0, 'upgraded_2000': 0}
+        # Stats per strategia adattiva
+        adaptive_stats = {'started_initial': 0, 'upgraded_max': 0}
         
         # Progress bar per ensemble IG
         for idx, text in enumerate(tqdm(texts, desc="   Computing Ensemble IG", unit="sample")):
@@ -443,7 +449,7 @@ def main():
             
             # Track adaptive stats
             if args.adaptive_steps:
-                adaptive_stats['started_1000'] += 1
+                adaptive_stats['started_initial'] += 1
             
             # Compute with adaptive/fixed strategy
             result, upgraded = compute_attributions_adaptive(
@@ -453,7 +459,7 @@ def main():
             )
             
             if upgraded:
-                adaptive_stats['upgraded_2000'] += 1
+                adaptive_stats['upgraded_max'] += 1
             
             # Extract attributions (if return_diagnostics=True, result is tuple)
             if isinstance(result, tuple):
@@ -481,11 +487,12 @@ def main():
         
         # Report statistiche adattive
         if args.adaptive_steps:
-            upgraded_pct = (adaptive_stats['upgraded_2000'] / adaptive_stats['started_1000'] * 100) if adaptive_stats['started_1000'] > 0 else 0
+            upgraded_pct = (adaptive_stats['upgraded_max'] / adaptive_stats['started_initial'] * 100) if adaptive_stats['started_initial'] > 0 else 0
             print(f"\n   📊 Adaptive strategy statistics:")
-            print(f"      Started with 1500 steps: {adaptive_stats['started_1000']} samples")
-            print(f"      Upgraded to 3500 steps: {adaptive_stats['upgraded_2000']} samples ({upgraded_pct:.1f}%)")
-            print(f"      Estimated time saved: ~{(1 - upgraded_pct/100) * 57:.1f}% vs fixed 3500 steps")
+            print(f"      Started with {ADAPTIVE_IG_STEPS_INITIAL} steps: {adaptive_stats['started_initial']} samples")
+            print(f"      Upgraded to {ADAPTIVE_IG_STEPS_MAX} steps: {adaptive_stats['upgraded_max']} samples ({upgraded_pct:.1f}%)")
+            saved_pct = (1 - upgraded_pct/100) * ((ADAPTIVE_IG_STEPS_MAX - ADAPTIVE_IG_STEPS_INITIAL) / ADAPTIVE_IG_STEPS_MAX * 100)
+            print(f"      Estimated time saved: ~{saved_pct:.1f}% vs fixed {ADAPTIVE_IG_STEPS_MAX} steps")
         
         # Analizza convergenza finale
         critical_samples = []
@@ -548,7 +555,7 @@ def main():
         explainer = IntegratedGradientsExplainer(model, tokenizer, args.device)
         
         results = []
-        adaptive_stats = {'started_1000': 0, 'upgraded_2000': 0}
+        adaptive_stats = {'started_initial': 0, 'upgraded_max': 0}
         
         if args.adaptive_steps:
             # Strategia adattiva per single model
@@ -590,7 +597,7 @@ def main():
                     )
                 
                 # Track adaptive stats
-                adaptive_stats['started_1000'] += 1
+                adaptive_stats['started_initial'] += 1
                 
                 # Compute with adaptive strategy
                 (attributions, diagnostics), upgraded = compute_attributions_adaptive(
@@ -600,7 +607,7 @@ def main():
                 )
                 
                 if upgraded:
-                    adaptive_stats['upgraded_2000'] += 1
+                    adaptive_stats['upgraded_max'] += 1
                 
                 # Sum across embedding dimension e converti a numpy
                 attributions_np = attributions.sum(dim=-1).squeeze(0).detach().cpu().numpy()
@@ -621,11 +628,12 @@ def main():
             print(f"   ✅ Single model IG completed for {len(results)} samples")
             
             # Report statistiche adattive
-            upgraded_pct = (adaptive_stats['upgraded_2000'] / adaptive_stats['started_1000'] * 100) if adaptive_stats['started_1000'] > 0 else 0
+            upgraded_pct = (adaptive_stats['upgraded_max'] / adaptive_stats['started_initial'] * 100) if adaptive_stats['started_initial'] > 0 else 0
             print(f"\n   📊 Adaptive strategy statistics:")
-            print(f"      Started with 1000 steps: {adaptive_stats['started_1000']} samples")
-            print(f"      Upgraded to 2000 steps: {adaptive_stats['upgraded_2000']} samples ({upgraded_pct:.1f}%)")
-            print(f"      Estimated time saved: ~{(1 - upgraded_pct/100) * 33:.1f}% vs fixed 2000 steps")
+            print(f"      Started with {ADAPTIVE_IG_STEPS_INITIAL} steps: {adaptive_stats['started_initial']} samples")
+            print(f"      Upgraded to {ADAPTIVE_IG_STEPS_MAX} steps: {adaptive_stats['upgraded_max']} samples ({upgraded_pct:.1f}%)")
+            saved_pct = (1 - upgraded_pct/100) * ((ADAPTIVE_IG_STEPS_MAX - ADAPTIVE_IG_STEPS_INITIAL) / ADAPTIVE_IG_STEPS_MAX * 100)
+            print(f"      Estimated time saved: ~{saved_pct:.1f}% vs fixed {ADAPTIVE_IG_STEPS_MAX} steps")
             
         else:
             # Strategia fissa: usa explain_batch originale

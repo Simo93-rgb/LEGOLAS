@@ -156,7 +156,7 @@ fi
 # PARAMETRI TRAINING (solo se action = 1 o 3)
 # ============================================================
 
-USE_KFOLD="--use_kfold"
+USE_KFOLD=""
 N_FOLDS=5
 USE_FOCAL=""
 FOCAL_ALPHA="0.25 0.75"
@@ -171,13 +171,28 @@ if [ "$ACTION" = "1" ] || [ "$ACTION" = "3" ]; then
     echo -e "${BLUE}   CONFIGURAZIONE TRAINING${NC}"
     echo -e "${BLUE}════════════════════════════════════════════════════════${NC}\n"
     
-    echo -e "${GREEN}🔄 K-Fold Cross Validation: ATTIVO (default)${NC}"
+    # Menu scelta modalità training
+    echo -e "${YELLOW}Quale modalità di training vuoi usare?${NC}"
+    echo "  1) Training semplice (train/val split)"
+    echo "  2) K-Fold Cross Validation (più robusto)"
     echo ""
-    read -p "Numero di folds [default=5]: " n_folds_input
-    if [[ "$n_folds_input" =~ ^[0-9]+$ ]] && [ "$n_folds_input" -ge 2 ]; then
-        N_FOLDS=$n_folds_input
-    fi
-    echo -e "${GREEN}   Folds: ${N_FOLDS}${NC}"
+    read -p "Scelta [1-2, default=1]: " training_mode
+    
+    case $training_mode in
+        2)
+            USE_KFOLD="--use_kfold"
+            echo ""
+            read -p "Numero di folds [default=5]: " n_folds_input
+            if [[ "$n_folds_input" =~ ^[0-9]+$ ]] && [ "$n_folds_input" -ge 2 ]; then
+                N_FOLDS=$n_folds_input
+            fi
+            echo -e "${GREEN}🔄 K-Fold Cross Validation: ATTIVO${NC}"
+            echo -e "${GREEN}   Folds: ${N_FOLDS}${NC}"
+            ;;
+        *)
+            echo -e "${GREEN}📊 Training Semplice: ATTIVO${NC}"
+            ;;
+    esac
     
     # Menu Loss Function
     echo ""
@@ -227,7 +242,12 @@ if [ "$ACTION" = "1" ] || [ "$ACTION" = "3" ]; then
     
     echo ""
     echo -e "${GREEN}✅ Configurazione Training:${NC}"
-    echo "   K-Fold: ${N_FOLDS} folds"
+    if [ -n "$USE_KFOLD" ]; then
+        echo "   Modalità: K-Fold Cross Validation"
+        echo "   Folds: ${N_FOLDS}"
+    else
+        echo "   Modalità: Training Semplice"
+    fi
     echo "   Epochs: ${EPOCHS}"
     echo "   Patience: ${PATIENCE}"
     echo "   Batch size: ${BATCH_SIZE}"
@@ -236,13 +256,16 @@ if [ "$ACTION" = "1" ] || [ "$ACTION" = "3" ]; then
     # Costruisci comando training
     TRAIN_CMD="uv run python src/training/train_llm.py \
         --story_format ${FORMAT} \
-        --model ${MODEL} \
+        --model_name ${MODEL} \
         --epochs ${EPOCHS} \
         --patience ${PATIENCE} \
         --batch_size ${BATCH_SIZE} \
-        --learning_rate ${LR} \
-        ${USE_KFOLD} \
-        --n_folds ${N_FOLDS}"
+        --learning_rate ${LR}"
+    
+    # Aggiungi K-Fold se selezionato
+    if [ -n "$USE_KFOLD" ]; then
+        TRAIN_CMD="${TRAIN_CMD} ${USE_KFOLD} --n_folds ${N_FOLDS}"
+    fi
     
     # Aggiungi opzioni Focal Loss
     if [ -n "$USE_FOCAL" ]; then
@@ -391,10 +414,15 @@ fi
 
 echo -e "${YELLOW}💡 Suggerimenti:${NC}"
 
-# K-Fold è sempre attivo, mostra sempre path K-Fold
-echo "   - Modelli salvati (${N_FOLDS} fold): ${MODELS_DIR}/best_model_${FORMAT}_${MODEL}_fold*.pth"
-echo "   - Risultati aggregati: output/reports/kfold_aggregated_${FORMAT}_${MODEL}_results.json"
-echo "   - Metriche per fold: output/reports/fold_*_${FORMAT}_${MODEL}_metrics.json"
+# Mostra path diversi a seconda della modalità
+if [ -n "$USE_KFOLD" ]; then
+    echo "   - Modelli salvati (${N_FOLDS} fold): ${MODELS_DIR}/best_model_${FORMAT}_${MODEL}_fold*.pth"
+    echo "   - Risultati aggregati: output/reports/kfold_aggregated_${FORMAT}_${MODEL}_results.json"
+    echo "   - Metriche per fold: output/reports/fold_*_${FORMAT}_${MODEL}_metrics.json"
+else
+    echo "   - Modello salvato: ${MODELS_DIR}/best_model_${FORMAT}_${MODEL}.pth"
+    echo "   - Training history: ${MODELS_DIR}/training_history_${FORMAT}_${MODEL}.json"
+fi
 echo "   - Label mapping: output/reports/label_mapping.json"
 echo "   - Report evaluation: ${PREDICTION_DIR}/xes_${FORMAT}_${MODEL}_report.txt"
 echo "   - Log evaluation: ${EVALUATION_DIR}/eval_${FORMAT}_${MODEL}_*.log"
