@@ -641,7 +641,7 @@ def main():
                 texts=texts,
                 labels=true_labels,
                 predicted_classes=predicted_labels,
-                internal_batch_size=args.internal_batch_size,
+                batch_size=args.internal_batch_size,
                 n_steps=args.n_steps
             )
     
