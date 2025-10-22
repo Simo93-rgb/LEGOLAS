@@ -24,7 +24,7 @@ cd "$PROJECT_ROOT"
 
 # 1. Select story format
 echo -e "${YELLOW}📖 Story Format Selection:${NC}"
-echo "   1) narrativo   - Natural narrative style"
+echo "   1) narrativo   - Natural narrative style (default)"
 echo "   2) bullet      - Bullet point format"
 echo "   3) clinical    - Clinical documentation style"
 echo ""
@@ -46,30 +46,30 @@ echo ""
 
 # 2. Select model
 echo -e "${YELLOW}🤖 Model Selection:${NC}"
-echo "   1) clinical-bert           - Clinical BERT (UMCUtrecht)"
-echo "   2) clinical-modernbert     - Modern Clinical BERT"
-echo "   3) pubmedbert-base         - PubMed BERT Base"
-echo "   4) biobert-base            - BioBERT Base"
-echo "   5) cambridgeltl-sapbert    - SapBERT"
-echo "   6) medbert-base            - MedBERT Base"
-echo "   7) scibert-base            - SciBERT Base"
-echo "   8) clinical-longformer     - Clinical Longformer"
-echo "   9) bert-base-uncased       - BERT Base"
+echo "   1) bert-base-uncased       - BERT Base (default)"
+echo "   2) clinical-bert           - Clinical BERT (UMCUtrecht)"
+echo "   3) clinical-modernbert     - Modern Clinical BERT"
+echo "   4) pubmedbert-base         - PubMed BERT Base"
+echo "   5) biobert-base            - BioBERT Base"
+echo "   6) cambridgeltl-sapbert    - SapBERT"
+echo "   7) medbert-base            - MedBERT Base"
+echo "   8) scibert-base            - SciBERT Base"
+echo "   9) clinical-longformer     - Clinical Longformer"
 echo "   10) bert-large-uncased     - BERT Large"
 echo ""
 read -p "Select model [1-10] (default: 1): " MODEL_CHOICE
 MODEL_CHOICE=${MODEL_CHOICE:-1}
 
 case $MODEL_CHOICE in
-    1) MODEL_NAME="clinical-bert" ;;
-    2) MODEL_NAME="clinical-modernbert" ;;
-    3) MODEL_NAME="pubmedbert-base" ;;
-    4) MODEL_NAME="biobert-base" ;;
-    5) MODEL_NAME="cambridgeltl-sapbert" ;;
-    6) MODEL_NAME="medbert-base" ;;
-    7) MODEL_NAME="scibert-base" ;;
-    8) MODEL_NAME="clinical-longformer" ;;
-    9) MODEL_NAME="bert-base-uncased" ;;
+    1) MODEL_NAME="bert-base-uncased" ;;
+    2) MODEL_NAME="clinical-bert" ;;
+    3) MODEL_NAME="clinical-modernbert" ;;
+    4) MODEL_NAME="pubmedbert-base" ;;
+    5) MODEL_NAME="biobert-base" ;;
+    6) MODEL_NAME="cambridgeltl-sapbert" ;;
+    7) MODEL_NAME="medbert-base" ;;
+    8) MODEL_NAME="scibert-base" ;;
+    9) MODEL_NAME="clinical-longformer" ;;
     10) MODEL_NAME="bert-large-uncased" ;;
     *) 
         echo -e "${RED}Invalid choice, using bert-base-uncased${NC}"
@@ -80,30 +80,93 @@ esac
 echo -e "${GREEN}✓ Selected model: ${MODEL_NAME}${NC}"
 echo ""
 
-# 3. Advanced parameters
+# 3. Dataset selection
+echo -e "${YELLOW}📊 Dataset Selection:${NC}"
+echo "   1) test   - Test set only (default)"
+echo "   2) train  - Training set only"
+echo "   3) all    - Both train + test"
+echo ""
+read -p "Select dataset [1-3] (default: 1): " DATASET_CHOICE
+DATASET_CHOICE=${DATASET_CHOICE:-1}
+
+case $DATASET_CHOICE in
+    1) DATASET="test" ;;
+    2) DATASET="train" ;;
+    3) DATASET="all" ;;
+    *) 
+        echo -e "${RED}Invalid choice, using test${NC}"
+        DATASET="test"
+        ;;
+esac
+
+echo -e "${GREEN}✓ Selected dataset: ${DATASET}${NC}"
+echo ""
+
+# 4. Advanced parameters
 echo -e "${YELLOW}⚙️  Advanced Parameters:${NC}"
-read -p "Number of samples to analyze (press Enter for all test set): " N_SAMPLES
-read -p "Top-K words to visualize (default: 25): " TOP_K
-TOP_K=${TOP_K:-25}
-read -p "Batch size (default: 8): " BATCH_SIZE
-BATCH_SIZE=${BATCH_SIZE:-8}
-read -p "Integrated Gradients steps (default: 50): " N_STEPS
-N_STEPS=${N_STEPS:-50}
+read -p "Number of samples to analyze (press Enter for all ${DATASET} set): " N_SAMPLES
+read -p "Top-K words to visualize (default: 20): " TOP_K
+TOP_K=${TOP_K:-20}
+read -p "Internal batch size for IG interpolation (default: 32): " INTERNAL_BATCH_SIZE
+INTERNAL_BATCH_SIZE=${INTERNAL_BATCH_SIZE:-32}
+read -p "Integrated Gradients steps (default: 1500): " N_STEPS
+N_STEPS=${N_STEPS:-1500}
 
 echo ""
 echo -e "${GREEN}✓ Configuration complete${NC}"
 echo ""
 
-# 4. Build command
+# 5. Adaptive steps strategy
+echo -e "${YELLOW}🔄 Adaptive Steps Strategy:${NC}"
+echo "   Use adaptive n_steps (start 1500, increase to 5500 if needed)?"
+read -p "Enable adaptive steps? [y/N] (default: N): " ADAPTIVE_CHOICE
+ADAPTIVE_CHOICE=${ADAPTIVE_CHOICE:-N}
+
+if [[ "$ADAPTIVE_CHOICE" =~ ^[Yy]$ ]]; then
+    USE_ADAPTIVE="--adaptive_steps"
+    echo -e "${GREEN}✓ Adaptive steps enabled (1500→5500, tolerance=0.05)${NC}"
+else
+    USE_ADAPTIVE=""
+    echo -e "${GREEN}✓ Fixed steps: ${N_STEPS}${NC}"
+fi
+
+echo ""
+
+# 6. Ensemble mode
+echo -e "${YELLOW}🎯 Model Inference Mode:${NC}"
+echo "   Use K-Fold ensemble (average attributions across folds)?"
+read -p "Enable ensemble mode? [y/N] (default: N, uses best fold): " ENSEMBLE_CHOICE
+ENSEMBLE_CHOICE=${ENSEMBLE_CHOICE:-N}
+
+if [[ "$ENSEMBLE_CHOICE" =~ ^[Yy]$ ]]; then
+    USE_ENSEMBLE="--use_ensemble"
+    echo -e "${GREEN}✓ Ensemble mode enabled (K-Fold averaging)${NC}"
+else
+    USE_ENSEMBLE=""
+    echo -e "${GREEN}✓ Best fold mode (single model)${NC}"
+fi
+
+echo ""
+
+# 7. Build command
 CMD="uv run python -m src.explainability.extract_explainability"
 CMD="$CMD --model $MODEL_NAME"
 CMD="$CMD --format $STORY_FORMAT"
+CMD="$CMD --dataset $DATASET"
 CMD="$CMD --top_k $TOP_K"
-CMD="$CMD --batch_size $BATCH_SIZE"
+CMD="$CMD --internal_batch_size $INTERNAL_BATCH_SIZE"
 CMD="$CMD --n_steps $N_STEPS"
 
 if [ ! -z "$N_SAMPLES" ]; then
     CMD="$CMD --n_samples $N_SAMPLES"
+fi
+
+if [ ! -z "$USE_ADAPTIVE" ]; then
+    CMD="$CMD $USE_ADAPTIVE"
+fi
+
+if [ ! -z "$USE_ENSEMBLE" ]; then
+    CMD="$CMD $USE_ENSEMBLE"
 fi
 
 # Auto-detect GPU
@@ -127,7 +190,7 @@ echo ""
 # Confirm execution
 read -p "Press Enter to start, or Ctrl+C to cancel..."
 
-# 5. Execute
+# 8. Execute
 echo ""
 eval $CMD
 
