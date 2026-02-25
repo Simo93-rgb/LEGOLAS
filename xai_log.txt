@@ -1,0 +1,139 @@
+================================================================================
+  LEGOLAS - Explainability Extraction (Integrated Gradients)
+================================================================================
+
+📋 Configuration:
+   Model: bert-base-uncased
+   Format: narrativo
+   Dataset: test
+   Device: cuda
+   Mode: Best fold only
+   Top-K: 10
+   Internal batch size: 32 (for IG interpolation)
+   IG steps: Adaptive (1500→5500 if needed, tolerance=0.05)
+📖 Loading data (format: narrativo, dataset: test)...
+   ✅ Loaded 1109 test samples
+   📊 Label mapping (from train): {0: 0, 1: 1}
+
+   📈 Class distribution:
+      Class 0: 988 samples (89.1%)
+      Class 1: 121 samples (10.9%)
+
+   📊 Dataset: 1109 samples, 2 classes
+
+🤖 Loading model: bert-base-uncased
+   Story format: narrativo
+   Mode: Best fold only
+📋 Model architecture from checkpoint: bert-base-uncased
+✅ HuggingFace ID: bert-base-uncased
+
+📥 Loading best fold model...
+   Best fold: 0
+   Accuracy: 0.9361
+   Model: best_model_narrativo_bert-base-uncased_fold0.pth
+   Deduced config: hidden_size=768, vocab_size=30522, layers=12, heads=12
+   ✅ Model loaded successfully
+
+   HuggingFace ID: bert-base-uncased
+   ✅ Model loaded successfully
+   📊 Single model: best fold
+
+
+🔮 Generating predictions...
+   ✅ Predictions completed
+
+   📊 Predicted distribution:
+      Class 0: 954 samples
+      Class 1: 155 samples
+
+   🎯 Accuracy: 91.34% (1013/1109)
+
+================================================================================
+🔍 Computing Integrated Gradients (single model)...
+
+   Computing Single Model IG:   0%|          | 0/1109 [00:00<?, ?sample/s]
+   Computing Single Model IG:   0%|          | 1/1109 [00:03<1:01:18,  3.32s/sample]
+   ...
+   Computing Single Model IG: 100%|██████████| 1109/1109 [2:10:42<00:00,  7.07s/sample]
+/home/simon/GitHub/LEGOLAS/src/explainability/visualization.py:463: UserWarning: Tight layout not applied. The bottom and top margins cannot be made large enough to accommodate all Axes decorations.
+  plt.tight_layout()
+   ✅ Single model IG completed for 1109 samples
+
+   📊 Adaptive strategy statistics:
+      Started with 1500 steps: 1109 samples
+      Upgraded to 5500 steps: 109 samples (9.8%)
+      Estimated time saved: ~65.6% vs fixed 5500 steps
+
+💾 Risultati salvati: /home/simon/GitHub/LEGOLAS/output/explainability/ig_results_narrativo_bert-base-uncased_single_20260223_155139.pkl
+
+📊 Extracting top-10 words...
+
+   Top 10 words for Class 0:
+       1. 682                  → 0.7547
+       2. daurgenza            → 0.7330
+       3. 597                  → 0.5765
+       4. 730                  → 0.4494
+       5. 510                  → 0.4287
+       6. 892                  → 0.4222
+       7. 849                  → 0.4077
+       8. 298                  → 0.4054
+       9. 704                  → 0.3935
+      10. 866                  → 0.3833
+
+   Top 10 words for Class 1:
+       1. 411                  → 0.9129
+       2. 299                  → 0.5858
+       3. 521                  → 0.5066
+       4. 338                  → 0.5048
+       5. 447                  → 0.4308
+       6. 781                  → 0.3953
+       7. 857                  → 0.3774
+       8. 772                  → 0.3608
+       9. 588                  → 0.3593
+      10. 409                  → 0.3519
+
+🏥 Aggregating clinical actions...
+✅ Loaded 621 clinical actions from translation file
+
+   Top 10 clinical actions for Class 0:
+      1. CVC cannulation [Cardiac Intensive Care Unit]...
+         Mean: 0.5416, Count: 1
+      2. Upper abdomen MRI, without and with contrast...
+         Mean: 0.3178, Count: 2
+      3. Endovascular treatment of intracranial aneurysms...
+         Mean: 0.3071, Count: 5
+      4. MRI of the lumbosacral spine, with and without contrast...
+         Mean: 0.2281, Count: 2
+      5. Myocardial perfusion scintigraphy (SPECT) at rest or after s...
+         Mean: 0.2098, Count: 2
+
+💾 Action results salvati: /home/simon/GitHub/LEGOLAS/output/explainability/actions_narrativo_bert-base-uncased_single_20260223_155139.pkl
+
+🎨 Creating visualizations...
+   📝 Word-level visualizations...
+✅ Heatmap salvata: /home/simon/GitHub/LEGOLAS/output/explainability/heatmap_words_narrativo_bert-base-uncased_single_20260223_155139.png
+✅ Istogramma salvato: /home/simon/GitHub/LEGOLAS/output/explainability/histogram_words_narrativo_bert-base-uncased_single_20260223_155139.png
+   🏥 Clinical actions visualizations...
+✅ Clinical actions heatmap salvata: /home/simon/GitHub/LEGOLAS/output/explainability/heatmap_actions_narrativo_bert-base-uncased_single_20260223_155139.png
+✅ Clinical actions comparison salvato: /home/simon/GitHub/LEGOLAS/output/explainability/histogram_actions_narrativo_bert-base-uncased_single_20260223_155139.png
+
+================================================================================
+✅ Explainability extraction completed!
+
+📁 Output files:
+   • IG Results (raw): /home/simon/GitHub/LEGOLAS/output/explainability/ig_results_narrativo_bert-base-uncased_single_20260223_155139.pkl
+   • Clinical Actions (aggregated): /home/simon/GitHub/LEGOLAS/output/explainability/actions_narrativo_bert-base-uncased_single_20260223_155139.pkl
+
+   📊 Clinical Actions Visualizations (MAIN - interpretable):
+   • Heatmap (actions): /home/simon/GitHub/LEGOLAS/output/explainability/heatmap_actions_narrativo_bert-base-uncased_single_20260223_155139.png
+   • Histogram (actions): /home/simon/GitHub/LEGOLAS/output/explainability/histogram_actions_narrativo_bert-base-uncased_single_20260223_155139.png
+
+   📝 Word-level Visualizations (reference):
+   • Heatmap (words): /home/simon/GitHub/LEGOLAS/output/explainability/heatmap_words_narrativo_bert-base-uncased_single_20260223_155139.png
+   • Histogram (words): /home/simon/GitHub/LEGOLAS/output/explainability/histogram_words_narrativo_bert-base-uncased_single_20260223_155139.png
+
+================================================================================
+
+real	131m1.648s
+user	425m43.431s
+sys	667m17.953s

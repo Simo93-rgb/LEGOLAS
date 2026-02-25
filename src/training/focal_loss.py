@@ -175,9 +175,9 @@ def create_focal_loss(
         FocalLoss configurato
     """
     if alpha is None:
-        # Default LEGOLAS: più peso alla classe minoritaria (ADMITTED)
+        # Default LEGOLAS: più peso alla classe minoritaria
         if num_classes == 2:
-            alpha = [0.25, 0.75]  # [DISCHARGED, ADMITTED]
+            alpha = [0.25, 0.75]
         else:
             # Distribuzione uniforme per multiclasse
             alpha = [1.0 / num_classes] * num_classes
