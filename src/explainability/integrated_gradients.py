@@ -146,6 +146,7 @@ class IntegratedGradientsExplainer:
         attributions = self.ig.attribute(
             inputs=embeddings,
             baselines=baseline,
+            method='riemann_trapezoid',
             additional_forward_args=(attention_mask,),
             target=target_class,
             n_steps=n_steps,

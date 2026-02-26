@@ -14,7 +14,6 @@ import glob
 import numpy as np
 from pathlib import Path
 from datetime import datetime
-from tqdm import tqdm
 
 from transformers import AutoTokenizer, AutoModel
 from src.models.neural_network import LongFormerMultiClassificationHeads
@@ -34,11 +33,6 @@ from src.config.paths import (
     OUTPUT_DIR,
     ensure_directories
 )
-
-# Configurazione Adaptive Integrated Gradients
-ADAPTIVE_IG_STEPS_INITIAL = 1500  # Step iniziali (veloce, ~60% samples converge)
-ADAPTIVE_IG_STEPS_MAX = 5500      # Step massimi per casi difficili
-ADAPTIVE_IG_TOLERANCE = 0.05      # Soglia errore relativo (5%)
 
 
 def load_trained_model(model_name: str, story_format: str, num_classes: int, 
@@ -96,7 +90,7 @@ def load_test_data(story_format: str, dataset: str = 'test'):
     Returns:
         texts, true_labels, label2id
     """
-    assert dataset in {'test', 'train', 'all', 'valvole_cardiache'}, "dataset deve essere 'test', 'train', 'all' o 'valvole_cardiache'"
+    assert dataset in {'test', 'train', 'all'}, "dataset deve essere 'test', 'train' o 'all'"
     print(f"📖 Loading data (format: {story_format}, dataset: {dataset})...")
 
     def _load_split(split: str):
@@ -121,20 +115,6 @@ def load_test_data(story_format: str, dataset: str = 'test'):
         true_labels = [label2id[label] for label in labels_str]
         print(f"   ✅ Loaded {len(texts)} samples (train+test)")
         print(f"   📊 Label mapping (from train): {label2id}")
-    elif dataset == 'valvole_cardiache':
-        texts, labels_str = _load_split('valvole_cardiache')
-        # Manteniamo il label mapping dal dataset originale di default (train) se possibile, 
-        # oppure inferiamo dalle label di questo dataset. Per coerenza con il modello addestrato:
-        try:
-            _, labels_train_str = _load_split('train')
-            unique_labels = sorted(set(labels_train_str))
-        except FileNotFoundError:
-            unique_labels = sorted(set(labels_str))
-            
-        label2id = {label: idx for idx, label in enumerate(unique_labels)}
-        true_labels = [label2id[label] for label in labels_str]
-        print(f"   ✅ Loaded {len(texts)} valvole_cardiache samples")
-        print(f"   📊 Label mapping: {label2id}")
     else:
         # Singolo split
         texts, labels_str = _load_split(dataset)
@@ -163,7 +143,7 @@ def load_test_data(story_format: str, dataset: str = 'test'):
     return texts, true_labels, label2id
 
 
-def get_model_predictions(model, tokenizer, texts, device='cuda', internal_batch_size=32, is_ensemble=False):
+def get_model_predictions(model, tokenizer, texts, device='cuda', batch_size=32, is_ensemble=False):
     """
     Ottieni predizioni del modello su test set
     
@@ -172,7 +152,7 @@ def get_model_predictions(model, tokenizer, texts, device='cuda', internal_batch
         tokenizer: Tokenizer
         texts: List of text strings
         device: Device for computation
-        internal_batch_size: Batch size
+        batch_size: Batch size
         is_ensemble: If True, model is EnsembleModel
         
     Returns:
@@ -185,8 +165,8 @@ def get_model_predictions(model, tokenizer, texts, device='cuda', internal_batch
         all_probs = []
         all_preds = []
         
-        for i in range(0, len(texts), internal_batch_size):
-            batch_texts = texts[i:i+internal_batch_size]
+        for i in range(0, len(texts), batch_size):
+            batch_texts = texts[i:i+batch_size]
             
             # Tokenize
             encoding = tokenizer(
@@ -214,8 +194,8 @@ def get_model_predictions(model, tokenizer, texts, device='cuda', internal_batch
         all_probs = []
         
         with torch.no_grad():
-            for i in range(0, len(texts), internal_batch_size):
-                batch_texts = texts[i:i+internal_batch_size]
+            for i in range(0, len(texts), batch_size):
+                batch_texts = texts[i:i+batch_size]
                 
                 # Tokenize
                 encoding = tokenizer(
@@ -262,8 +242,8 @@ def main():
     parser.add_argument(
         '--dataset',
         type=str,
-        default='test',
-        choices=['test', 'train', 'all', 'valvole_cardiache'],
+        default='all',
+        choices=['test', 'train', 'all'],
         help="Dataset da usare: 'test', 'train' o 'all' (train+test)"
     )
     parser.add_argument(
@@ -285,37 +265,21 @@ def main():
         help='Device for computation'
     )
     parser.add_argument(
-        '--internal_batch_size',
+        '--batch_size',
         type=int,
-        default=32,
-        help='Internal batch size for IG interpolation steps (higher=faster, but uses more GPU memory). Default: 32'
+        default=8,
+        help='Batch size for IG computation'
     )
     parser.add_argument(
         '--n_steps',
         type=int,
-        default=ADAPTIVE_IG_STEPS_INITIAL,
-        help=f'Number of steps for Integrated Gradients (default: {ADAPTIVE_IG_STEPS_INITIAL}, validated for convergence)'
-    )
-    parser.add_argument(
-        '--adaptive_steps',
-        action='store_true',
-        help=f'Use adaptive n_steps strategy: start with {ADAPTIVE_IG_STEPS_INITIAL}, increase to {ADAPTIVE_IG_STEPS_MAX} if needed (tolerance={ADAPTIVE_IG_TOLERANCE})'
+        default=50,
+        help='Number of steps for Integrated Gradients'
     )
     parser.add_argument(
         '--use_ensemble',
         action='store_true',
         help='Use K-Fold ensemble (average attributions across folds) instead of best fold'
-    )
-    parser.add_argument(
-        '--checkpoint_every',
-        type=int,
-        default=50,
-        help='Save a recovery checkpoint every N samples (0 = disabled). Default: 50'
-    )
-    parser.add_argument(
-        '--resume',
-        action='store_true',
-        help='Resume from last checkpoint if available (same model/format/dataset/mode combination)'
     )
     
     args = parser.parse_args()
@@ -330,20 +294,13 @@ def main():
     print(f"   Device: {args.device}")
     print(f"   Mode: {'Ensemble (K-Fold)' if args.use_ensemble else 'Best fold only'}")
     print(f"   Top-K: {args.top_k}")
-    print(f"   Internal batch size: {args.internal_batch_size} (for IG interpolation)")
-    if args.adaptive_steps:
-        print(f"   IG steps: Adaptive ({ADAPTIVE_IG_STEPS_INITIAL}→{ADAPTIVE_IG_STEPS_MAX} if needed, tolerance={ADAPTIVE_IG_TOLERANCE})")
-    else:
-        print(f"   IG steps: {args.n_steps} (fixed)")
+    print(f"   Batch size: {args.batch_size}")
+    print(f"   IG steps: {args.n_steps}")
     
     # Assicura directory output
     ensure_directories()
     explainability_dir = OUTPUT_DIR / "explainability"
     explainability_dir.mkdir(exist_ok=True)
-    
-    # Checkpoint path (deterministic: no timestamp, can be found on --resume)
-    _mode_sfx = "ensemble" if args.use_ensemble else "single"
-    checkpoint_file = explainability_dir / f"checkpoint__{args.model}_{_mode_sfx}_{args.format}_{args.dataset}.pkl"
     
     # Timestamp per file output
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -372,7 +329,7 @@ def main():
     # 3. Get predictions
     predicted_labels, predicted_probs = get_model_predictions(
         model, tokenizer, texts, args.device, 
-        internal_batch_size=32,  # Prediction batch size (diverso da IG batch)
+        batch_size=32,  # Prediction batch size (diverso da IG batch)
         is_ensemble=is_ensemble
     )
     
@@ -391,164 +348,37 @@ def main():
     # 4. Extract Integrated Gradients
     print(f"\n{'='*80}")
     
-    # Helper function: Strategia adattiva per IG (riutilizzabile per ensemble e single)
-    def compute_attributions_adaptive(
-        compute_fn,  # Funzione che calcola IG: (n_steps, verbose) -> (attributions, diagnostics?)
-        use_adaptive: bool,
-        fixed_n_steps: int,
-        get_rel_error_fn=None  # Funzione per estrarre rel_error da diagnostics (se diverso)
-    ):
-        """
-        Wrapper per strategia adattiva: prova ADAPTIVE_IG_STEPS_INITIAL steps, 
-        se non converge usa ADAPTIVE_IG_STEPS_MAX.
+    if is_ensemble:
+        # Ensemble mode: usa compute_ensemble_attributions per ogni sample
+        print(f"🔍 Computing Ensemble Integrated Gradients...")
+        print(f"   Strategy: Calculate IG for each fold model → Average attributions")
+        print(f"   Models: {len(model.models)} folds")
         
-        Args:
-            compute_fn: Callable che accetta (n_steps, verbose) e ritorna (attributions, diagnostics?) 
-            use_adaptive: Se True, usa strategia adattiva
-            fixed_n_steps: n_steps da usare in modalità fissa
-            get_rel_error_fn: Callable per estrarre rel_error da diagnostics
-            
-        Returns:
-            attributions, adaptive_upgraded (bool indicating if upgraded to max steps)
-        """
-        if use_adaptive:
-            n_steps_initial = ADAPTIVE_IG_STEPS_INITIAL
-            n_steps_max = ADAPTIVE_IG_STEPS_MAX
-            tolerance = ADAPTIVE_IG_TOLERANCE
-
-            # Tentativo con ADAPTIVE_IG_STEPS_INITIAL steps (SILENZIOSO - verbose=False)
-            result = compute_fn(n_steps_initial, verbose=False)
-            
-            # Estrai rel_error (default: cerca 'avg_rel_error' o 'rel_error')
-            if get_rel_error_fn:
-                rel_error = get_rel_error_fn(result)
-            else:
-                # Default: result è tuple (attributions, diagnostics)
-                diagnostics = result[1] if isinstance(result, tuple) else {}
-                rel_error = diagnostics.get('avg_rel_error') or diagnostics.get('rel_error', float('inf'))
-
-            # Se non converge, ricalcola con ADAPTIVE_IG_STEPS_MAX steps (VERBOSE - mostra diagnostics)
-            if rel_error > tolerance:
-                result = compute_fn(n_steps_max, verbose=True)
-                upgraded = True
-            else:
-                upgraded = False
-                
-            return result, upgraded
-        else:
-            # Modalità fissa (verbose=True per vedere diagnostics)
-            result = compute_fn(fixed_n_steps, verbose=True)
-            return result, False
-    
-    
-    print(f"\n{'='*80}")
-    print(f"🔍 Computing Integrated Gradients...")
-    
-    explainer = IntegratedGradientsExplainer(
-        model.models[0] if is_ensemble else model,
-        tokenizer,
-        args.device
-    )
-    results = []
-    adaptive_stats = {'started_initial': 0, 'upgraded_max': 0}
-    _resume_start = 0
-
-    if args.resume and checkpoint_file.exists():
-        with open(checkpoint_file, 'rb') as _f:
-            _ckpt = pickle.load(_f)
-        results = _ckpt['results']
-        _resume_start = _ckpt['next_idx']
-        adaptive_stats = _ckpt.get('adaptive_stats', adaptive_stats)
-        timestamp = _ckpt.get('timestamp', timestamp)
-        print(f"\n♻️  Resuming from checkpoint: {_resume_start}/{len(texts)} samples already done")
-    elif args.resume:
-        print(f"\n⚠️  --resume specified but no checkpoint found at {checkpoint_file}. Starting fresh.")
-
-    def _save_checkpoint(next_idx):
-        with open(checkpoint_file, 'wb') as _f:
-            pickle.dump({
-                'results': results,
-                'next_idx': next_idx,
-                'adaptive_stats': adaptive_stats,
-                'timestamp': timestamp,
-            }, _f)
-
-    # --- Pre-tokenization phase (pure CPU) ---
-    print(f"\n🔄 Pre-tokenizing {len(texts)} sequences (CPU)...")
-    _preprocessed = []
-    for _text in tqdm(texts, desc="   Tokenizing", unit="sample", leave=False):
-        _encoding = tokenizer(
-            _text, padding='max_length', truncation=True, 
-            max_length=512, return_tensors='pt'
-        )
-        _ids = _encoding['input_ids'].to(args.device)
-        _mask = _encoding['attention_mask'].to(args.device)
-        _tokens = tokenizer.convert_ids_to_tokens(_ids[0])
-        _preprocessed.append((_text, _ids, _mask, _tokens))
-    print(f"   ✅ Pre-tokenization done")
-
-    # Flag shared to signal a CUDA crash
-    _cuda_err = [None]
-    
-    for idx, (text, input_ids_t, attention_mask_t, tokens) in enumerate(tqdm(_preprocessed, desc="   Computing IG", unit="sample")):
-        if idx < _resume_start:
-            continue
-
-        target_cls = predicted_labels[idx]
+        # Create temporary explainer with first fold model (just to use helper methods)
+        temp_explainer = IntegratedGradientsExplainer(model.models[0], tokenizer, args.device)
         
-        # Safe embedding lookup
-        try:
-            with torch.no_grad():
-                if is_ensemble:
-                    embeddings = model.models[0].longformer.embeddings.word_embeddings(input_ids_t)
-                    baseline = torch.zeros_like(embeddings)
-                else:
-                    embeddings = model.longformer.embeddings.word_embeddings(input_ids_t)
-                    baseline = torch.zeros_like(embeddings)
-        except RuntimeError as _e:
-            if 'CUDA' in str(_e) or 'cuda' in str(_e) or 'illegal' in str(_e).lower():
-                _cuda_err[0] = _e
-                break
-            raise
-        
-        if is_ensemble:
-            def compute_fn(n_steps, verbose=False):
-                try:
-                    return model.compute_ensemble_attributions(
-                        input_ids=input_ids_t,
-                        attention_mask=attention_mask_t,
-                        target_class=target_cls,
-                        n_steps=n_steps,
-                        return_diagnostics=True,
-                        verbose=verbose
-                    )
-                except RuntimeError as _e_ens:
-                    if 'CUDA' in str(_e_ens) or 'cuda' in str(_e_ens) or 'illegal' in str(_e_ens).lower():
-                        _cuda_err[0] = _e_ens
-                        return None
-                    raise
+        results = []
+        for idx, text in enumerate(texts):
+            if idx % 100 == 0:
+                print(f"   Processing sample {idx+1}/{len(texts)}...")
             
-            if args.adaptive_steps:
-                adaptive_stats['started_initial'] += 1
+            # Tokenize
+            encoding = tokenizer(text, padding=True, truncation=True, 
+                                max_length=512, return_tensors='pt')
+            input_ids = encoding['input_ids'].to(args.device)
+            attention_mask = encoding['attention_mask'].to(args.device)
+            tokens = tokenizer.convert_ids_to_tokens(input_ids[0])
             
-            result, upgraded = compute_attributions_adaptive(
-                compute_fn=compute_fn,
-                use_adaptive=args.adaptive_steps,
-                fixed_n_steps=args.n_steps
+            # Compute ensemble attributions
+            ensemble_attributions = model.compute_ensemble_attributions(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                target_class=predicted_labels[idx],
+                n_steps=args.n_steps
             )
             
-            if _cuda_err[0]: break
-            
-            if upgraded:
-                adaptive_stats['upgraded_max'] += 1
-                
-            if isinstance(result, tuple):
-                ensemble_attributions, diagnostics = result
-            else:
-                ensemble_attributions = result
-                diagnostics = None
-                
-            word_attributions = explainer.aggregate_subword_attributions(
+            # Use explainer's aggregate method to convert tokens to words
+            word_attributions = temp_explainer.aggregate_subword_attributions(
                 tokens, ensemble_attributions.detach().cpu().numpy()
             )
             
@@ -558,114 +388,27 @@ def main():
                 'token_attributions': ensemble_attributions.detach().cpu().numpy(),
                 'word_attributions': word_attributions,
                 'true_label': true_labels[idx],
-                'predicted_label': target_cls,
-                'predicted_prob': predicted_probs[idx],
-                'diagnostics': diagnostics
+                'predicted_label': predicted_labels[idx],
+                'predicted_prob': predicted_probs[idx]
             })
             
-        else:
-            # Single model
-            if args.adaptive_steps:
-                from src.explainability.ig_completeness import compute_ig_with_completeness_check
-                def forward_func(input_embeds, attention_mask_param=attention_mask_t):
-                    outputs = model.longformer(
-                        inputs_embeds=input_embeds,
-                        attention_mask=attention_mask_param
-                    )
-                    return model.output_layer(outputs.pooler_output)
-                
-                def compute_fn_single(n_steps, verbose=False):
-                    try:
-                        return compute_ig_with_completeness_check(
-                            forward_fn=forward_func,
-                            input_embeds=embeddings,
-                            baseline_embeds=baseline,
-                            target_class=target_cls,
-                            n_steps=n_steps,
-                            device=args.device,
-                            internal_batch_size=args.internal_batch_size
-                        )
-                    except RuntimeError as _e_adp:
-                        if 'CUDA' in str(_e_adp) or 'cuda' in str(_e_adp) or 'illegal' in str(_e_adp).lower():
-                            _cuda_err[0] = _e_adp
-                            return (None, None)
-                        raise
-                        
-                adaptive_stats['started_initial'] += 1
-                (attributions, diagnostics), upgraded = compute_attributions_adaptive(
-                    compute_fn=compute_fn_single,
-                    use_adaptive=True,
-                    fixed_n_steps=args.n_steps
-                )
-            
-                if _cuda_err[0]: break
-                if upgraded:
-                    adaptive_stats['upgraded_max'] += 1
-                    
-                attributions_np = attributions.sum(dim=-1).squeeze(0).detach().cpu().numpy()
-                word_attributions = explainer.aggregate_subword_attributions(tokens, attributions_np)
-                
-            else:
-                try:
-                    attr = explainer.ig.attribute(
-                        inputs=embeddings,
-                        baselines=baseline,
-                        method='riemann_trapezoid',
-                        additional_forward_args=(attention_mask_t,),
-                        target=target_cls,
-                        n_steps=args.n_steps,
-                        internal_batch_size=args.internal_batch_size
-                    )
-                    attributions_np = attr.sum(dim=-1).squeeze(0).detach().cpu().numpy()
-                    word_attributions = explainer.aggregate_subword_attributions(tokens, attributions_np)
-                    diagnostics = None
-                except RuntimeError as _e_fix:
-                    if 'CUDA' in str(_e_fix) or 'cuda' in str(_e_fix) or 'illegal' in str(_e_fix).lower():
-                        _cuda_err[0] = _e_fix
-                        break
-                    raise
-
-            results.append({
-                'text': text,
-                'tokens': tokens,
-                'token_attributions': attributions_np.tolist() if not isinstance(attributions_np, list) else attributions_np,
-                'word_attributions': word_attributions,
-                'true_label': true_labels[idx],
-                'predicted_label': target_cls,
-                'predicted_prob': predicted_probs[idx],
-                'diagnostics': diagnostics
-            })
-            
-        # Periodic checkpoint
-        if args.checkpoint_every > 0 and (idx + 1) % args.checkpoint_every == 0:
-            _save_checkpoint(idx + 1)
-            tqdm.write(f"   💾 Checkpoint saved at sample {idx + 1}/{len(texts)}")
-            
-    # --- Check for CUDA Crashes ---
-    if _cuda_err[0] is not None:
-        tqdm.write(f"\n💥 CUDA error at sample {idx}: {_cuda_err[0]}")
-        tqdm.write(f"   Saving checkpoint ({len(results)} results done)...")
-        _save_checkpoint(idx)
-        tqdm.write(f"   ✅ Re-run with --resume to continue from sample {idx}.")
-        return
-
-    print(f"   ✅ IG completed for {len(results)} samples")
-
-    if args.adaptive_steps:
-        total = adaptive_stats['started_initial']
-        upgraded = adaptive_stats['upgraded_max']
-        upgraded_pct = upgraded / total * 100 if total > 0 else 0.0
-        saved_pct = (1 - upgraded_pct / 100) * ((ADAPTIVE_IG_STEPS_MAX - ADAPTIVE_IG_STEPS_INITIAL) / ADAPTIVE_IG_STEPS_MAX * 100)
-        print(f"\n   📊 Adaptive strategy statistics:")
-        print(f"      Analyzed: {total} samples")
-        print(f"      Upgraded to {ADAPTIVE_IG_STEPS_MAX} steps: {upgraded} samples ({upgraded_pct:.1f}%)")
-        print(f"      Estimated time saved: ~{saved_pct:.1f}% vs fixed {ADAPTIVE_IG_STEPS_MAX} steps")
-    
-    # Rimuovi checkpoint (esecuzione completata con successo)
-    if checkpoint_file.exists():
-        checkpoint_file.unlink()
-        print(f"   🗑️  Checkpoint rimosso (run completato)")
+        print(f"   ✅ Ensemble IG completed for {len(results)} samples")
         
+        # Use temp_explainer for subsequent processing
+        explainer = temp_explainer
+        
+    else:
+        # Single model mode (originale)
+        explainer = IntegratedGradientsExplainer(model, tokenizer, args.device)
+        
+        results = explainer.explain_batch(
+            texts=texts,
+            labels=true_labels,
+            predicted_classes=predicted_labels,
+            batch_size=args.batch_size,
+            n_steps=args.n_steps
+        )
+    
     # Salva risultati raw
     mode_suffix = "ensemble" if is_ensemble else "single"
     results_file = explainability_dir / f"ig_results_{args.format}_{args.model}_{mode_suffix}_{timestamp}.pkl"
