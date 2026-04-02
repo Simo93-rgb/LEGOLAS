@@ -62,7 +62,7 @@ def main():
     print(f"   ✅ Loaded {len(model.models)} folds\n")
     
     # Test n_steps values
-    n_steps_values = [20, 50, 100]
+    n_steps_values = [1000, 15000]
     
     print(f"🔍 Testing n_steps: {n_steps_values}\n")
     
